@@ -15,3 +15,4 @@ Regular translators don't know the context, so technical words come out wrong: "
 Badge (ESP32) → speech-to-text → field detection → context-aware translation → ElevenLabs voice → back to the badge, with everything shown live on the dashboard.
 
 Built at LarpHacks 2026 (Toronto).
+By Bernard Kim, Justin Cen, Sharvesh Kandavel and Kenneth Wu
