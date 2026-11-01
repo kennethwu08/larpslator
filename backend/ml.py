@@ -5,7 +5,7 @@
 - tone:    punctuation rules, then nearest tone prototype by embedding
 - terms:   glossary lookup for the detected field
 - choice:  which translation to use per term, learned from thumbs up/down (Beta posterior per option)
-- context: only the context-pack lines relevant to this sentence go to the LLM
+- context: only the context-pack lines relevant to this sentence go to Gemini
 - larp:    drops filler words and upgrades weak phrases before translation
 """
 import json
@@ -168,7 +168,7 @@ class LocalML:
         }
 
     def enhance(self, text: str) -> dict:
-        """LARP, local part: drop filler words, upgrade weak phrases. the LLM polishes the rest."""
+        """LARP, local part: drop filler words, upgrade weak phrases. Gemini polishes the rest."""
         out, changes = text, []
         for rx in self.larp["_fillers"]:
             for m in rx.finditer(out):

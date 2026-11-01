@@ -175,7 +175,7 @@ function fillRow(u) {
     `<span class="chip" data-term="${esc(x.term)}" title="Wrong word? Click to try the next option">${esc(x.match)} → ${esc(x.choice)}</span>`).join("");
   tr.querySelector(".dst").innerHTML = `${esc(u.translation)}<div>${chips}</div>` +
     `<div class="meta">${esc(u.target)} · ${esc(u.domain)} · ${esc(u.tone)}${u.retry ? ` · retry ${u.retry}` : ""}` +
-    `${ms("llm", t.llm)}${ms("tts", t.elevenlabs)} · total ${t.total}ms</div>`;
+    `${ms("gemini", t.gemini)}${ms("tts", t.elevenlabs)} · total ${t.total}ms</div>`;
   tr.querySelectorAll(".chip").forEach(c => c.onclick = () => send({ t: "fb", val: -1, id: u.id, term: c.dataset.term }));
   tr.querySelectorAll(".fb button").forEach(b => b.classList.remove("sel"));
   if (tr === $("rows").firstElementChild) showDomains(u.domain_probs, u.domain);
