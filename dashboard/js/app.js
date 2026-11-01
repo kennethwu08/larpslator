@@ -1,233 +1,325 @@
-/* Larpslator dashboard UI. Restyle and rearrange freely.
- *
- * Talks to the backend only through `larp` (js/api.js): call its methods, listen to its events.
- * Event and field names are documented in docs/messages.md.
- */
+/* Presentation layer only. All commands and events go through the unchanged Larp API. */
 (function () {
   "use strict";
   const $ = id => document.getElementById(id);
-  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const LABELS = { pickleball: "Pickleball", tennis: "Tennis", cs: "Computer science", math: "Math", general: "Everyday conversation" };
+  const SYMBOLS = { pickleball: "◒", tennis: "◉", cs: "⌘", math: "∑", larp: "✧", general: "○" };
+  const TARGET_CODES = { Korean: "ko", Spanish: "es", French: "fr", "Mandarin Chinese": "zh", Japanese: "ja", German: "de", English: "en", Tamil: "ta" };
   const larp = Larp.connect();
+  const cards = new Map();
+  const utterances = new Map();
+  let status = null, packs = [], micRecording = null, uploading = false, acquiringMic = false;
+  let latestId = null, contextSignature = "", toastTimer, recording = false;
 
-  let status = null;          // latest "status" message
-  let packs = [];
-  let micRecording = null;    // browser voice recording in progress
-  let uploading = false;
-
-  // ------------------------------------------------------------ connection
+  function toast(message) {
+    clearTimeout(toastTimer);
+    $("toast").textContent = message;
+    $("toast").hidden = false;
+    toastTimer = setTimeout(() => { $("toast").hidden = true; }, 4500);
+  }
+  function setPill(id, text, kind = "") {
+    $(id).textContent = text;
+    $(id).className = "pill " + kind;
+  }
+  function activeConnection(connected) {
+    $("listen").disabled = $("lang").disabled = $("notes-save").disabled = $("voice-open").disabled = $("reset").disabled = !connected;
+    $("voice-test").disabled = !connected;
+    $("contexts").querySelectorAll("input").forEach(input => { input.disabled = !connected; });
+  }
   $("pill-mock").hidden = !larp.mock;
-  larp.on("open", () => setPill("pill-server", "server: connected", "on"));
-  larp.on("close", () => { setPill("pill-server", "server: reconnecting…", "bad"); $("listen").disabled = true; });
+  if (larp.mock) $("rec-browser").textContent = "Simulate recording";
+  larp.on("open", () => setPill("pill-server", larp.mock ? "Demo connected" : "Session connected", "on"));
+  larp.on("close", () => {
+    setPill("pill-server", "Reconnecting…", "bad");
+    activeConnection(false);
+    document.body.classList.remove("is-listening");
+    $("session-state").textContent = "Connection interrupted";
+    $("session-hint").textContent = "Reconnecting to your session…";
+    $("feed-label").textContent = "Connection interrupted";
+  });
 
-  function setPill(id, text, cls) { $(id).textContent = text; $(id).className = `pill ${cls || ""}`; }
-
-  // ------------------------------------------------------------ status: everything that's on/off
   larp.on("status", m => {
     const first = !status;
     status = m;
-    $("listen").disabled = false;
-    $("listen").textContent = m.listening ? "Stop" : "Listen";
-    $("listen").className = `listen ${m.listening ? "on" : "off"}`;
-    setPill("pill-badge", m.badge ? "badge: connected" : "badge: offline", m.badge ? "on" : "");
-
-    const lang = $("lang");
-    if (lang.options.length !== m.languages.length) lang.innerHTML = m.languages.map(l => `<option>${esc(l)}</option>`).join("");
-    lang.value = m.target;
-
-    renderContexts(m.contexts);
-    renderVoice(m.voice, m.voice_recording);
-    renderPacks(m.packs, m.context_name);
-    if (first) { $("notes").value = m.context; $("notes-name").value = m.context_name; }
+    activeConnection(true);
+    document.body.classList.toggle("is-listening", !!m.listening);
+    $("listen").className = "listen " + (m.listening ? "on" : "off");
+    $("listen-label").textContent = m.listening ? "Stop listening" : "Start listening";
+    $("listen").querySelector(".listen-symbol").textContent = m.listening ? "■" : "●";
+    $("listen").setAttribute("aria-pressed", String(!!m.listening));
+    $("session-state").textContent = m.listening ? (larp.mock ? "A conversation, in motion" : "Listening to your conversation") : "A moment of quiet";
+    $("session-hint").textContent = m.listening ? (larp.mock ? "Simulated conversation · no microphone or API calls" : "Speak naturally. Your badge is listening.") : "Press Start listening when you're ready.";
+    $("feed-label").textContent = m.listening ? "Live updates" : "Session paused";
+    setPill("pill-badge", m.badge ? (larp.mock ? "Demo badge online" : "Badge connected") : "Badge offline", m.badge ? "on" : "bad");
+    const languages = Array.isArray(m.languages) ? m.languages : [];
+    if (JSON.stringify([...$("lang").options].map(o => o.value)) !== JSON.stringify(languages)) {
+      $("lang").innerHTML = languages.map(l => '<option value="' + esc(l) + '">' + esc(l) + "</option>").join("");
+    }
+    $("lang").value = m.target;
+    $("target-caption").textContent = m.target;
+    renderContexts(m.contexts || []);
+    renderVoice(m.voice || {}, m.voice_recording);
+    const signature = JSON.stringify(m.packs || []);
+    if (signature !== $("packs").dataset.signature) {
+      packs = m.packs || [];
+      $("packs").innerHTML = '<option value="">Load saved notes…</option>' + packs.map((p, i) => '<option value="' + i + '">' + esc(p.name) + "</option>").join("");
+      $("packs").dataset.signature = signature;
+    }
+    $("notes-status").textContent = m.context_name ? "Active: " + m.context_name : "No notes active";
+    if (first) {
+      $("notes").value = m.context || "";
+      $("notes-name").value = m.context_name || "";
+    }
   });
-
-  $("listen").onclick = () => larp.setListening(!status.listening);
-  $("lang").onchange = e => larp.setLanguage(e.target.value);
-
-  // ------------------------------------------------------------ contexts (checkboxes)
-  function renderContexts(contexts) {
-    $("contexts").innerHTML = contexts.map(c => `
-      <label class="ctx ${c.kind}">
-        <input type="checkbox" data-id="${esc(c.id)}" ${c.on ? "checked" : ""}>
-        ${esc(c.label)}
-        <span class="source" title="Where this context's data comes from: data/ or the backend's built-in fallback">${esc(c.source)}</span>
-      </label>`).join("");
-    $("contexts").querySelectorAll("input").forEach(cb => cb.onchange = () => larp.toggleContext(cb.dataset.id, cb.checked));
-  }
-
-  // ------------------------------------------------------------ meeting notes
-  function renderPacks(list, active) {
-    packs = list;
-    $("packs").innerHTML = `<option value="">Load saved notes…</option>` +
-      list.map((p, i) => `<option value="${i}">${esc(p.name)} (${esc(p.saved_at)})</option>`).join("");
-    $("notes-status").textContent = active ? `Active: ${active}` : "No notes active";
-  }
-  $("notes-save").onclick = () => larp.saveNotes($("notes-name").value.trim() || "default", $("notes").value);
-  $("packs").onchange = e => {
-    const p = packs[e.target.value];
-    if (!p) return;
-    $("notes-name").value = p.name; $("notes").value = p.text;
-    larp.saveNotes(p.name, p.text);
+  $("listen").onclick = () => { if (status) larp.setListening(!status.listening); };
+  $("lang").onchange = event => {
+    larp.setLanguage(event.target.value);
+    if (larp.mock) toast("Demo text stays in Korean. Live sessions use the language you select.");
+  };
+  $("present").onclick = () => {
+    const on = document.body.classList.toggle("presentation");
+    $("present").setAttribute("aria-pressed", String(on));
+    $("present").textContent = on ? "↙" : "↗";
+    $("present").title = on ? "Exit presentation view" : "Enter presentation view";
   };
 
-  // ------------------------------------------------------------ voice setup
-  function renderVoice(v, badgeRecording) {
-    setPill("pill-voice", v.ready ? `voice: ${v.name}` : "voice: stock (set up!)", v.ready ? "on" : "bad");
-    $("voice-state").innerHTML = v.ready
-      ? `Translations are spoken in <b>${esc(v.name)}</b>'s voice.<br><span class="small">voice id: ${esc(v.voice_id)}</span>`
-      : `<span class="warn-text">⚠ Translations use a stock voice. Set up your voice so the badge sounds like you.</span>`;
-    $("voice-summary").textContent = v.ready ? "Redo voice setup" : "Set up your voice";
-    if (!v.ready && !$("voice-setup").dataset.touched) $("voice-setup").open = true;
+  function renderContexts(contexts) {
+    const signature = JSON.stringify(contexts);
+    if (signature === contextSignature) return;
+    contextSignature = signature;
+    $("contexts").innerHTML = contexts.map(c =>
+      '<label class="ctx ' + esc(c.kind) + '"><input type="checkbox" data-id="' + esc(c.id) + '" ' + (c.on ? "checked" : "") + '><span class="context-icon" aria-hidden="true">' + esc(SYMBOLS[c.id] || "○") + "</span><span>" + esc(c.label) + "</span>" +
+      (c.kind === "style" ? '<span class="style-tag">EXPERT STYLE</span>' :
+        '<span class="source" title="' + (c.source === "data" ? "Using your custom context glossary" : "Using the starter context glossary") + '">' + (c.source === "data" ? "Custom" : "Starter") + "</span>") + "</label>"
+    ).join("");
+    $("contexts").querySelectorAll("input").forEach(input => {
+      input.onchange = () => larp.toggleContext(input.dataset.id, input.checked);
+    });
+  }
+  $("notes-save").onclick = () => {
+    larp.saveNotes($("notes-name").value.trim() || "My session", $("notes").value);
+    toast("Session context saved.");
+  };
+  $("packs").onchange = event => {
+    if (event.target.value === "") return;
+    const p = packs[Number(event.target.value)];
+    if (!p) return;
+    $("notes-name").value = p.name;
+    $("notes").value = p.text;
+    larp.saveNotes(p.name, p.text);
+    toast("Loaded " + p.name + ".");
+  };
 
-    // A badge recording is tracked by the server; a browser recording only here.
-    if (badgeRecording !== null) setRecording(true);
-    else if (!micRecording && !uploading) {
-      setRecording(false);
-      if (v.ready && $("rec-progress").textContent.startsWith("Creating")) $("rec-progress").textContent = "Done. Press ▶ Play test.";
+  // Voice setup keeps the badge and browser flows provided by api.js.
+  $("voice-open").onclick = () => $("voice-dialog").showModal();
+  $("voice-close").onclick = () => $("voice-dialog").close();
+  function setRecording(on) {
+    recording = on;
+    $("rec-badge").disabled = on || acquiringMic || !status?.badge;
+    $("rec-browser").disabled = on || acquiringMic || !status;
+    $("rec-stop").disabled = $("rec-cancel").disabled = !on || uploading;
+  }
+  function renderVoice(voice, badgeRecording) {
+    const badgeIsRecording = badgeRecording !== null && badgeRecording !== undefined;
+    setPill("pill-voice", voice.ready ? (larp.mock ? "Demo voice: " : "Voice: ") + (voice.name || "My voice") : "Stock voice · set up yours", voice.ready ? "on" : "bad");
+    $("voice-state").textContent = voice.ready ? "Your translations, in " + (voice.name || "your") + "'s voice." : "A stock voice is active. Add yours for a more personal conversation.";
+    $("voice-open").innerHTML = (voice.ready ? "Manage voice" : "Set up voice") + "<span>↗</span>";
+    setRecording(badgeIsRecording || !!micRecording || uploading || acquiringMic);
+    if (voice.ready && !badgeIsRecording && !micRecording && !uploading) {
+      if ($("rec-progress").textContent.startsWith("Creating")) $("rec-progress").textContent = "Your voice is ready. Play a sample from the sidebar.";
     }
   }
-  function setRecording(on) {
-    $("rec-badge").disabled = $("rec-browser").disabled = on;
-    $("rec-stop").disabled = $("rec-cancel").disabled = !on;
-  }
-  const hint = s => s < 20 ? "Keep reading…" : s < 60 ? "Good. A bit more sounds better." : "Great, press Stop.";
-
+  const hint = seconds => seconds < 20 ? "Keep reading…" : seconds < 60 ? "Good. A little more makes it more natural." : "Ready. You can stop recording.";
   larp.on("voice_progress", m => {
-    $("rec-progress").textContent = m.state === "creating" ? "Creating your voice with ElevenLabs…"
-      : `${m.speech_s} s of speech (${m.total_s} s total). ${hint(m.speech_s)}`;
+    $("rec-progress").textContent = m.state === "creating" ? "Creating your voice…" : m.speech_s + " seconds of speech · " + hint(m.speech_s);
+    if (m.state === "creating") {
+      $("rec-stop").disabled = $("rec-cancel").disabled = true;
+    }
   });
-  $("voice-setup").addEventListener("toggle", () => $("voice-setup").dataset.touched = "1");
-
   $("rec-badge").onclick = () => {
+    if (!status?.badge || recording) return;
     larp.voiceRecordOnBadge($("voice-name").value);
     setRecording(true);
-    $("rec-progress").textContent = "Recording on the badge… start reading.";
+    $("rec-progress").textContent = larp.mock ? "Simulated recording. Read along, then stop after 20 seconds of speech." : "Recording on your badge. Start reading.";
   };
   $("rec-browser").onclick = async () => {
-    try {
-      micRecording = await Larp.recordMicrophone(s => $("rec-progress").textContent = `${s.toFixed(0)} s recorded. ${hint(s)}`);
+    if (recording || acquiringMic) return;
+    if (larp.mock) {
+      larp.voiceRecordOnBadge($("voice-name").value);
       setRecording(true);
+      $("rec-progress").textContent = "Simulated recording · no microphone is in use.";
+      return;
+    }
+    acquiringMic = true;
+    setRecording(false);
+    $("rec-progress").textContent = "Waiting for microphone permission…";
+    try {
+      micRecording = await Larp.recordMicrophone(s => { $("rec-progress").textContent = s.toFixed(0) + " seconds recorded · " + hint(s); });
     } catch (e) {
-      // Browsers only allow the mic on localhost or https. Otherwise record on the badge.
-      $("rec-progress").textContent = `Microphone not available: ${e.message}`;
+      $("rec-progress").textContent = "Microphone unavailable: " + e.message;
+    } finally {
+      acquiringMic = false;
+      setRecording(!!micRecording);
     }
   };
   $("rec-stop").onclick = async () => {
-    if (!micRecording) { larp.voiceStop(); $("rec-stop").disabled = true; return; }
+    if (!micRecording) {
+      larp.voiceStop();
+      $("rec-stop").disabled = true;
+      return;
+    }
     const rec = micRecording;
     micRecording = null;
     uploading = true;
-    $("rec-stop").disabled = $("rec-cancel").disabled = true;
-    $("rec-progress").textContent = "Creating your voice with ElevenLabs…";
+    setRecording(true);
+    $("rec-progress").textContent = "Creating your voice…";
     try {
       await larp.voiceUpload(await rec.stop(), $("voice-name").value);
-      $("rec-progress").textContent = "Done. Press ▶ Play test.";
+      $("rec-progress").textContent = "Your voice is ready. Play a sample from the sidebar.";
     } catch (e) {
-      $("rec-progress").textContent = e.message;
+      $("rec-progress").textContent = "Voice setup: " + e.message;
     } finally {
       uploading = false;
       setRecording(false);
     }
   };
   $("rec-cancel").onclick = () => {
-    if (micRecording) { micRecording.cancel(); micRecording = null; setRecording(false); }
+    if (micRecording) { micRecording.cancel(); micRecording = null; }
     else larp.voiceCancel();
-    $("rec-progress").textContent = "Cancelled.";
+    setRecording(false);
+    $("rec-progress").textContent = "Recording cancelled.";
   };
-  $("voice-test").onclick = () => {
+  $("voice-test").onclick = async () => {
     const url = larp.voiceTestUrl();
-    if (!url) { $("rec-progress").textContent = "No audio in mock mode."; return; }
+    if (!url) { toast("Voice playback is available in a live session. This is a visual demo."); return; }
     $("voice-audio").src = url;
-    $("voice-audio").play();
+    try { await $("voice-audio").play(); } catch (_) { toast("Couldn't play the voice sample. Check your connection and voice setup."); }
   };
 
-  // ------------------------------------------------------------ conversation
   function card(id) {
-    let el = document.querySelector(`.utt[data-id="${id}"]`);
-    if (!el) {
-      el = document.createElement("div");
-      el.className = "utt";
-      el.dataset.id = id;
-      document.querySelector("#utterances .empty")?.remove();
-      $("utterances").prepend(el);
+    const key = String(id);
+    if (cards.has(key)) return cards.get(key);
+    const el = document.createElement("article");
+    el.className = "utt";
+    el.dataset.id = key;
+    $("utterances").querySelector(".empty")?.remove();
+    $("utterances").prepend(el);
+    cards.set(key, el);
+    latestId = key;
+    // A bounded feed stays responsive during a long rehearsal.
+    if (cards.size > 40) {
+      const oldest = cards.keys().next().value;
+      cards.get(oldest).remove();
+      cards.delete(oldest);
+      utterances.delete(oldest);
     }
+    $("utterance-count").textContent = cards.size;
     return el;
   }
-
+  function highlightedSource(source, terms) {
+    const ranges = (terms || []).filter(t => Number.isInteger(t.pos) && t.pos >= 0 && t.match && source.slice(t.pos, t.pos + t.match.length).toLowerCase() === t.match.toLowerCase())
+      .map(t => ({ start: t.pos, end: t.pos + t.match.length })).sort((a, b) => a.start - b.start);
+    let cursor = 0, output = "";
+    for (const range of ranges) {
+      if (range.start < cursor) continue;
+      output += esc(source.slice(cursor, range.start)) + "<mark>" + esc(source.slice(range.start, range.end)) + "</mark>";
+      cursor = range.end;
+    }
+    return output + esc(source.slice(cursor));
+  }
   larp.on("transcript", m => {
-    card(m.id).innerHTML = `<div class="pair"><div class="said">${esc(m.source)}</div>
-      <div class="heard muted">translating…</div></div>`;
+    card(m.id).innerHTML = '<div class="utt-heading"><span class="utterance-id">#' + esc(m.id) + '</span><span class="domain-tag">Finding the meaning</span></div><div class="pair"><div class="text-label">You said</div><div class="said">' + esc(m.source) + '</div><div class="translation-block"><div class="text-label">Making the connection</div><div class="heard">Translating<span class="typing" aria-hidden="true"><i></i><i></i><i></i></span></div></div></div>';
+    cards.get(String(m.id)).classList.add("pending");
   });
-
   larp.on("utterance", u => {
-    const t = u.timing_ms || {};
-    const ms = (label, v) => v === undefined ? "" : ` · ${label} ${v === 0 ? "cached" : v + " ms"}`;
-    const larpTag = u.larp ? ` <span class="tag larp">LARP</span>` : "";
-    const said = u.larp && u.larp.text !== u.source
-      ? `<div class="original">${esc(u.source)}</div>${esc(u.larp.text)}${larpTag}`
-      : `${esc(u.source)}${larpTag}`;
-    const chips = u.terms.map(x => `<button class="chip" data-term="${esc(x.term)}" title="Wrong? Try the next translation">${esc(x.match)} → ${esc(x.choice)}</button>`).join("");
-    const el = card(u.id);
-    el.innerHTML = `
-      <div class="pair"><div class="said">${said}</div><div class="heard">${esc(u.translation)}</div></div>
-      <div class="actions">
-        <button class="up" title="Good translation">👍</button><button class="down" title="Bad: try the next option">👎</button>
-        ${chips}
-      </div>
-      <div class="meta">#${u.id} · ${esc(u.domain)} · ${esc(u.tone)} · ${esc(u.lang)} → ${esc(u.target)}${u.retry ? ` · retry ${u.retry}` : ""}
-        ${ms("whisper", t.whisper)}${ms("ml", t.ml)}${ms("gemini", t.gemini)}${ms("voice", t.elevenlabs)} · total ${t.total} ms</div>`;
+    utterances.set(String(u.id), u);
+    const el = card(u.id), terms = u.terms || [], timing = u.timing_ms || {};
+    el.classList.remove("pending");
+    const total = Number.isFinite(timing.total) ? (timing.total === 0 ? "Cached" : (timing.total / 1000).toFixed(2) + "s") : "—";
+    const breakdown = Object.entries(timing).map(([key, value]) => key + ": " + (value === 0 ? "cached" : value + " ms")).join(" · ");
+    el.innerHTML =
+      '<div class="utt-heading"><span class="utterance-id">#' + esc(u.id) + '</span><span class="domain-tag"><span aria-hidden="true">' + esc(SYMBOLS[u.domain] || "○") + "</span>" + esc(LABELS[u.domain] || u.domain) + '</span>' +
+      (u.larp ? '<span class="tag">LARP STYLE</span>' : "") + '<span class="utt-time">' + (u.retry ? "Updated · take " + (u.retry + 1) : "Translation") + "</span></div>" +
+      '<div class="pair"><div class="text-label">You said <span>· ' + esc(u.lang || "Auto-detected") + '</span></div><div class="said source-text">' + highlightedSource(u.source || "", terms) + "</div>" +
+      (u.larp?.text && u.larp.text !== u.source ? '<div class="larp-edit"><div class="text-label">Expert phrasing</div>' + esc(u.larp.text) + "</div>" : "") +
+      '<div class="translation-block"><div class="text-label"><span class="translation-marker"></span>In ' + esc(larp.mock ? "Korean · demo fixture" : u.target) + '</div><div class="heard" lang="' + esc(larp.mock ? "ko" : TARGET_CODES[u.target] || "") + '">' + esc(u.translation) + "</div></div>" +
+      (terms.length ? '<div class="chips">' + terms.map(t => '<button class="chip" data-term="' + esc(t.term) + '" aria-label="Try next translation for ' + esc(t.term) + '">' + esc(t.match) + " → " + esc(t.choice) + "</button>").join("") + "</div>" : "") + "</div>" +
+      '<div class="utt-bottom"><span class="latency" title="' + esc(breakdown) + '"><strong>' + esc(total) + '</strong> · ' + (larp.mock ? "simulated timing" : "end to end") + '</span><div class="actions"><span class="feedback-prompt">Did we get it?</span><button class="feedback-button up" aria-label="Good translation for sentence ' + esc(u.id) + '" title="Good translation">↑</button><button class="feedback-button down" aria-label="Try another translation for sentence ' + esc(u.id) + '" title="Try another translation">↓</button></div></div>';
     el.querySelector(".up").onclick = () => larp.feedback(u.id, 1);
     el.querySelector(".down").onclick = () => larp.feedback(u.id, -1);
-    el.querySelectorAll(".chip").forEach(c => c.onclick = () => larp.feedback(u.id, -1, c.dataset.term));
-
-    if (el === $("utterances").firstElementChild) { renderFields(u.domain_probs, u.domain); renderTerms(u.terms); }
+    el.querySelectorAll(".chip").forEach(button => { button.onclick = () => larp.feedback(u.id, -1, button.dataset.term); });
+    if (String(u.id) === latestId) {
+      renderFields(u.domain_probs || {}, u.domain);
+      renderTerms(terms, u.id);
+    }
   });
-
   larp.on("feedback", m => {
-    const el = document.querySelector(`.utt[data-id="${m.id}"]`);
+    const el = cards.get(String(m.id));
     if (!el) return;
-    el.querySelector(".up")?.classList.toggle("sel", m.val === 1);
-    el.querySelector(".down")?.classList.toggle("sel", m.val === -1);
+    for (const [kind, value] of [["up", 1], ["down", -1]]) {
+      const button = el.querySelector("." + kind);
+      button?.classList.toggle("sel", m.val === value);
+      button?.setAttribute("aria-pressed", String(m.val === value));
+    }
+    toast(m.val > 0 ? "Noted. Your feedback makes the next conversation better." : m.term ? 'Trying the next meaning for "' + m.term + '".' : "Feedback noted.");
   });
-
   larp.on("error", m => {
     const div = document.createElement("div");
     div.className = "error";
-    div.textContent = `${m.id ? `#${m.id} ` : ""}${m.msg}`;
+    div.textContent = (m.id != null ? "Sentence " + m.id + ": " : "") + m.msg;
     $("errors").prepend(div);
+    while ($("errors").children.length > 3) $("errors").lastElementChild.remove();
     setTimeout(() => div.remove(), 15000);
-    if (m.msg.startsWith("voice setup")) { $("rec-progress").textContent = m.msg; setRecording(false); }
+    const el = cards.get(String(m.id));
+    if (el?.classList.contains("pending")) {
+      el.classList.remove("pending");
+      const heard = el.querySelector(".heard");
+      if (heard) heard.textContent = "Translation unavailable. Listening continues.";
+    }
+    if (String(m.msg).toLowerCase().startsWith("voice setup")) {
+      $("rec-progress").textContent = m.msg;
+      setRecording(false);
+    }
   });
-
-  // ------------------------------------------------------------ detected field + special words
-  const LABELS = { pickleball: "Pickleball", tennis: "Tennis", cs: "Computer sci.", math: "Math", general: "General" };
   function renderFields(probs, chosen) {
-    $("fields").innerHTML = Object.entries(probs).sort((a, b) => b[1] - a[1]).map(([d, p]) => `
-      <div class="field ${d === chosen ? "top" : ""}"><span>${esc(LABELS[d] || d)}</span>
-        <div class="track"><div class="fill" style="width:${Math.round(p * 100)}%"></div></div>
-        <span class="pct">${Math.round(p * 100)}%</span></div>`).join("");
+    $("fields").innerHTML = Object.entries(probs).sort((a, b) => b[1] - a[1]).map(([domain, probability]) => {
+      const pct = Math.round(Math.max(0, Math.min(1, Number(probability) || 0)) * 100);
+      return '<div class="field ' + (domain === chosen ? "top" : "") + '"><div class="field-label"><span>' + esc(LABELS[domain] || domain) + '</span><span>' + pct + '%</span></div><div class="track" role="meter" aria-label="' + esc(LABELS[domain] || domain) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><div class="fill" style="width:' + pct + '%"></div></div></div>';
+    }).join("");
   }
-  function renderTerms(terms) {
-    $("terms").innerHTML = terms.length ? terms.map(t => `
-      <div class="term"><span class="word">${esc(t.match)}</span> <span class="muted small">(${esc(LABELS[t.domain] || t.domain)})</span><br>
-        ${t.options.map(o => `<span class="opt ${o === t.choice ? "chosen" : ""}">${esc(o)}</span>`).join("")}</div>`).join("")
-      : `<p class="muted">No jargon in the latest sentence.</p>`;
+  function renderTerms(terms, id) {
+    $("terms").innerHTML = terms.length ? terms.map(t =>
+      '<div class="term"><div class="term-heading"><span class="word">' + esc(t.match) + '</span><span class="term-domain">' + esc(LABELS[t.domain] || t.domain) + '</span></div><div class="term-options">' +
+      (t.options || []).map(o => '<span class="opt ' + (o === t.choice ? "chosen" : "") + '">' + esc(o) + "</span>").join("") + '</div><button class="term-retry" data-term="' + esc(t.term) + '" aria-label="Try next meaning for ' + esc(t.term) + '">Try next meaning ↗</button></div>'
+    ).join("") : '<p class="muted small" style="margin-top:15px">Everyday words. No special terms needed.</p>';
+    $("terms").querySelectorAll(".term-retry").forEach(button => { button.onclick = () => larp.feedback(id, -1, button.dataset.term); });
   }
-
-  // ------------------------------------------------------------ learning curve
-  const chart = new Chart($("curve"), {
+  const chart = typeof Chart !== "undefined" ? new Chart($("curve"), {
     type: "line",
-    data: { labels: [], datasets: [{ data: [], borderColor: "#2ecc71", backgroundColor: "rgba(46,204,113,.15)", fill: true, tension: .3, pointRadius: 2 }] },
+    data: { labels: [], datasets: [{ data: [], borderColor: "#a58bb9", backgroundColor: "rgba(165,139,185,.10)", fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: "#bca5cd", pointBorderWidth: 0, borderWidth: 2 }] },
     options: {
-      animation: false, maintainAspectRatio: false, plugins: { legend: { display: false } },
-      scales: { y: { min: 0, max: 1, ticks: { callback: v => `${v * 100}%` } }, x: { ticks: { display: false } } },
-    },
-  });
+      animation: false, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => Math.round(ctx.parsed.y * 100) + "% positive feedback" } } },
+      scales: {
+        y: { min: 0, max: 1, ticks: { stepSize: .5, color: "#b3a3bf", font: { size: 8 }, callback: value => Math.round(value * 100) + "%" }, border: { display: false }, grid: { color: "#dfd6e7" } },
+        x: { ticks: { display: false }, border: { display: false }, grid: { display: false } }
+      }
+    }
+  }) : null;
   larp.on("metrics", m => {
-    $("accuracy").textContent = m.accuracy === null ? "–" : `${Math.round(m.accuracy * 100)}%`;
-    $("accuracy-meta").textContent = m.n ? `${m.n} ratings · line = last ${m.window}` : "No feedback yet";
-    chart.data.labels = m.curve.map((_, i) => i + 1);
-    chart.data.datasets[0].data = m.curve;
-    chart.update();
+    $("accuracy").textContent = m.accuracy == null ? "—" : Math.round(m.accuracy * 100) + "%";
+    $("accuracy-meta").textContent = m.n ? m.n + " ratings · last " + m.window + " shown" : "Your feedback starts the curve.";
+    if (chart) {
+      chart.data.labels = (m.curve || []).map((_, i) => i + 1);
+      chart.data.datasets[0].data = m.curve || [];
+      chart.update();
+    }
   });
-  $("reset").onclick = () => { if (confirm("Forget everything learned from 👍/👎?")) larp.resetLearning(); };
+  $("reset").onclick = () => {
+    if (confirm("Reset the learned term choices? This clears your feedback history.")) {
+      larp.resetLearning();
+      toast("Learning reset. A fresh start.");
+    }
+  };
 })();
