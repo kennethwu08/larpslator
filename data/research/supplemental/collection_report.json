@@ -1,0 +1,42 @@
+[
+  {
+    "id": "python-ko-expanded",
+    "url": "https://docs.python.org/ko/3.12/glossary.html",
+    "checked_at_utc": "2026-11-01T20:44:29.293276+00:00",
+    "robots": "robots.txt checked",
+    "final_url": "https://docs.python.org/ko/3.12/glossary.html",
+    "sha256": "0c3e1b0f989012dfaba67d508f65e3602bc5ed7a801e72022ce34045e2f796a3",
+    "bytes": 181889,
+    "content_type": "text/html",
+    "status": "html_retrieved",
+    "citation_metadata": {},
+    "verified_candidate_spellings": 6
+  },
+  {
+    "id": "pgc-ko-expanded",
+    "url": "https://pgc.kr/pickleball/glossary",
+    "checked_at_utc": "2026-11-01T20:44:30.633337+00:00",
+    "robots": "robots.txt checked",
+    "final_url": "https://pgc.kr/pickleball/glossary",
+    "sha256": "5239f1af2d69f3404c6f151bcd720a46827f463114d2ff805c198ce56a199591",
+    "bytes": 2257070,
+    "content_type": "text/html; charset=utf-8",
+    "status": "html_retrieved",
+    "citation_metadata": {},
+    "verified_candidate_spellings": 6
+  },
+  {
+    "id": "tennis-ko-expanded",
+    "url": "https://kocw-n.xcache.kinxcdn.com/data/document/2024/chuncheon/leekichung0206/1.pdf",
+    "checked_at_utc": "2026-11-01T20:44:37.115993+00:00",
+    "robots": "robots unavailable: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'kocw-n.xcache.kinxcdn.com'. (_ssl.c:1010)>",
+    "status": "skipped_robots_or_unavailable"
+  },
+  {
+    "id": "tamil-ml-education-2026",
+    "url": "https://jier.um.edu.my/index.php/tamilperaivu/article/view/75027",
+    "checked_at_utc": "2026-11-01T20:44:39.539909+00:00",
+    "robots": "robots unavailable: <urlopen error timed out>",
+    "status": "skipped_robots_or_unavailable"
+  }
+]

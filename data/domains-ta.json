@@ -14,5 +14,5 @@
     "pickleball": "data/glossaries/selected/pickleball-ta.json"
   },
   "status": "draft terminology; human review pending",
-  "classifier_status": "No trained classifier in repository; labels provided for Role C"
+  "classifier_status": "Research metadata only, not loaded as classifier configuration. Current application fields also include math; Tamil routing uses glossary hits."
 }
