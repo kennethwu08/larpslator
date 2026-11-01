@@ -45,6 +45,8 @@ badge mic ─► voice detection ─► Whisper ─► local ML ─► Featherle
 | A stock voice speaks until voice setup is done | The demo never goes silent; the dashboard shows a red "voice: stock (set up!)" warning. |
 | `webrtcvad-wheels` instead of `webrtcvad` | The original doesn't install on Python 3.14. |
 | One `.env` at the repo root | One place for keys; it's gitignored. |
+| Other devices need a pairing code; this laptop doesn't | Anyone on the venue/hotspot Wi-Fi could otherwise control the badge or hear the conversation. Local pages from other sites are blocked by Origin. |
+| Badge on plain `ws://:8000`, browsers on `https://:8443` | TLS is heavy on an ESP32; phones need https for the mic. One process (`serve.py`), shared state. |
 | Starter data in `backend/seeds.json` | Fallback until `data/` is filled. The dashboard shows `built-in` or `data` next to each context. |
 
 ## Status
@@ -58,7 +60,7 @@ badge mic ─► voice detection ─► Whisper ─► local ML ─► Featherle
 ```bash
 cp .env.example .env                    # paste OPENAI_API_KEY, FEATHERLESS_API_KEY, ELEVENLABS_API_KEY
 cd backend && pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
+python serve.py                         # prints the dashboard links, badge address and pairing code
 ```
 Dashboard: http://localhost:8000. Without keys or a badge: open `dashboard/index.html?mock=play`.
 
@@ -67,7 +69,7 @@ Dashboard: http://localhost:8000. Without keys or a badge: open `dashboard/index
 | Who | What |
 |---|---|
 | Everyone | OpenAI key (Whisper) in `.env`; Featherless and ElevenLabs keys are in. ElevenLabs key needs **Voices → Write** permission for voice setup, and a paid plan (Starter+) for voice cloning. |
-| A | Firmware per `docs/messages.md`. Minimum: audio + `ptt` + `fb`. For the badge panel: send `hello` (stable `id` from the MAC), `state`, answer `ping`; handle `config`, `active`, `identify`, `volume`. For Render: `wss://` with `beginSSL`. |
+| A | Firmware per `docs/messages.md`. Connect to `ws://<laptop-ip>:8000/ws/badge?token=<pairing code>` (the code is on the dashboard: Session → Pair Another Device; without it the server closes the socket with 4401). Minimum: audio + `ptt` + `fb`. For the badge panel: send `hello` (stable `id` from the MAC), `state`, answer `ping`; handle `config`, `active`, `identify`, `volume`. For Render: `wss://` with `beginSSL`. |
 | C + D | Fill `data/glossaries/<context>.json`, `data/train.jsonl`, `data/larp.json`. Have someone who reads Korean/Spanish check the translations. `data/README.md` still lists the old domains. |
 | D | Style the dashboard for the projector; plain-vs-Larpslator comparison for the demo. |
 

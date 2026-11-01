@@ -80,6 +80,7 @@ code { font: 13px ui-monospace, "SF Mono", Menlo, monospace; background: var(--f
 .ring-track { stroke: var(--fill); }
 .ring-fill { stroke: var(--green); stroke-linecap: round; transition: stroke-dasharray .4s ease; }
 .ring-fill.low { stroke: var(--red); }
+.device:not(.connected) .ring-fill { opacity: 0; }
 .badge-shape { position: absolute; inset: 22px; }
 .badge-body { fill: var(--cell); stroke: var(--sep); stroke-width: 1.2; }
 .badge-grille circle { fill: var(--tertiary); }
@@ -286,3 +287,10 @@ body.present .utt:not(:first-child) > * { opacity: .45; }
 body.present #present { margin-left: auto; }
 body.present .utt:nth-child(n+4) { display: none; }
 body.present .how { display: none; }
+
+/* ---------- pairing ---------- */
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 15px; letter-spacing: .02em; }
+.wrap { overflow-wrap: anywhere; }
+.accent-text { color: var(--blue) !important; }
+#pair-sheet .group-title { padding-left: 16px; }
+#code-input { width: 60%; color: var(--label); }

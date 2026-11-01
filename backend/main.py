@@ -13,18 +13,23 @@ import io
 import json
 import logging
 import os
+import math
 import re
+import secrets
 import socket
 import time
 import wave
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from urllib.parse import urlparse
 from pathlib import Path
 
+import numpy as np
+import sentry_sdk
 import webrtcvad
 from dotenv import load_dotenv
 from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -38,18 +43,52 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("larpslator")
 
-# Sentry (optional): crashes and skipped sentences show up in the Sentry dashboard during the demo.
+# Sentry (on when SENTRY_DSN is set): unhandled FastAPI errors are captured automatically; pipeline failures are
+# reported with a "step" tag (whisper / translation / elevenlabs / ...) so each failing service is its own issue,
+# and each sentence is a trace with one span per stage. Without a DSN all sentry_sdk calls are no-ops.
 if os.getenv("SENTRY_DSN"):
-    import sentry_sdk
-    sentry_sdk.init(dsn=os.getenv("SENTRY_DSN"), environment=os.getenv("SENTRY_ENVIRONMENT") or "local",
-                    traces_sample_rate=0.0)
-    log.info("Sentry error tracking on")
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    sentry_sdk.init(dsn=os.environ["SENTRY_DSN"], environment=os.getenv("SENTRY_ENVIRONMENT") or "local",
+                    traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE") or 0.2), send_default_pii=False,
+                    # Log lines become breadcrumbs, not issues: errors are reported once, with their step tag.
+                    integrations=[LoggingIntegration(level=logging.INFO, event_level=None)])
+    log.info("Sentry on (%s)", os.getenv("SENTRY_ENVIRONMENT") or "local")
 
 
-def report(e: Exception):
-    """Send a handled error (a skipped sentence) to Sentry, if it's set up."""
-    if os.getenv("SENTRY_DSN"):
+def report(e: Exception, step: str = "", **context):
+    """Send a handled error to Sentry, tagged with the pipeline step. Each exception is reported once."""
+    if getattr(e, "_larp_reported", False):
+        return
+    with sentry_sdk.new_scope() as scope:
+        if step:
+            scope.set_tag("step", step)
+        for k, v in context.items():
+            scope.set_extra(k, v)
         sentry_sdk.capture_exception(e)
+    try:
+        e._larp_reported = True
+    except AttributeError:
+        pass
+
+
+def warn(message: str, step: str, **context):
+    """A problem that didn't stop the sentence (e.g. the fallback LLM had to be used)."""
+    with sentry_sdk.new_scope() as scope:
+        scope.set_tag("step", step)
+        for k, v in context.items():
+            scope.set_extra(k, v)
+        sentry_sdk.capture_message(message, level="warning")
+
+
+@contextmanager
+def stage(name: str):
+    """One pipeline step: a span in the sentence's trace, and its errors reported with the step's name."""
+    with sentry_sdk.start_span(op=f"pipeline.{name}", name=name):
+        try:
+            yield
+        except Exception as e:
+            report(e, step=name)
+            raise
 
 # ---------------------------------------------------------------- config
 SAMPLE_RATE = 16000
@@ -257,6 +296,7 @@ def translate(text: str, target: str, terms: list[dict], context_lines: list[str
         if in_target_language(out, target):
             if model != LLM_MODEL:
                 log.info("translated by fallback model %s", model)
+                warn(f"Translation used the fallback model ({problem[:120]})", "translation", target=target)
             _translation_cache[key] = out
             _translation_cache_file.write_text(json.dumps(_translation_cache, ensure_ascii=False))
             return out, False
@@ -364,16 +404,18 @@ def translate_and_speak(r: dict, timing: dict):
     """LLM + ElevenLabs for an analyzed sentence. Fills r["translation"] and r["audio"]."""
     t = time.perf_counter()
     larp = r.get("larp")
-    if not larp and same_language(r["lang"], r["target"]):
-        r["translation"], cached = r["source"], True   # nothing to translate: no LLM call
-    else:
-        text = larp["text"] if larp else r["source"]   # LARP: send the locally upgraded wording
-        style = ML.larp_instruction(r["domain"]) if larp else ""
-        r["translation"], cached = translate(text, r["target"], r["terms"], r["context_lines"], style)
+    with stage("translation"):
+        if not larp and same_language(r["lang"], r["target"]):
+            r["translation"], cached = r["source"], True   # nothing to translate: no LLM call
+        else:
+            text = larp["text"] if larp else r["source"]   # LARP: send the locally upgraded wording
+            style = ML.larp_instruction(r["domain"]) if larp else ""
+            r["translation"], cached = translate(text, r["target"], r["terms"], r["context_lines"], style)
     timing["llm"] = 0 if cached else round((time.perf_counter() - t) * 1000)
 
     t = time.perf_counter()
-    r["audio"], cached = synthesize(r["translation"], r["tone"])
+    with stage("elevenlabs"):
+        r["audio"], cached = synthesize(r["translation"], r["tone"])
     timing["elevenlabs"] = 0 if cached else round((time.perf_counter() - t) * 1000)
     timing["total"] = round(sum(v for k, v in timing.items() if k != "total"))
 
@@ -388,22 +430,32 @@ def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
     """
     active = set(FIELDS) if active is None else active
     timing = {"vad": round(vad_s * 1000, 1)}
+    with sentry_sdk.start_transaction(op="utterance", name="translate sentence") as tx:
+        tx.set_tag("target", target)
+        t = time.perf_counter()
+        with stage("whisper"):
+            source, lang = transcribe(pcm, ML.whisper_prompt(active))
+        timing["whisper"] = round((time.perf_counter() - t) * 1000)
+        r = {"source": source, "lang": lang, "target": target, "translation": "", "audio": b"", "timing_ms": timing}
+        if not source:
+            return r
+        if on_transcript:
+            on_transcript(source, lang)
 
-    t = time.perf_counter()
-    source, lang = transcribe(pcm, ML.whisper_prompt(active))
-    timing["whisper"] = round((time.perf_counter() - t) * 1000)
-    r = {"source": source, "lang": lang, "target": target, "translation": "", "audio": b"", "timing_ms": timing}
-    if not source:
+        t = time.perf_counter()
+        with stage("local_ml"):
+            r.update(ML.analyze(source, target, context, active))
+        timing["ml"] = round((time.perf_counter() - t) * 1000)
+        tx.set_tag("domain", r["domain"])
+
+        translate_and_speak(r, timing)
         return r
-    if on_transcript:
-        on_transcript(source, lang)
 
-    t = time.perf_counter()
-    r.update(ML.analyze(source, target, context, active))
-    timing["ml"] = round((time.perf_counter() - t) * 1000)
 
-    translate_and_speak(r, timing)
-    return r
+def retranslate(r: dict, timing: dict):
+    """The thumbs-down replay, as its own trace."""
+    with sentry_sdk.start_transaction(op="utterance", name="retry after feedback"):
+        translate_and_speak(r, timing)
 
 
 # ---------------------------------------------------------------- context packs + feedback
@@ -439,6 +491,7 @@ def log_feedback(val: int, utt: dict | None):
 # ---------------------------------------------------------------- badges
 BADGE_PING_S = 5           # heartbeat: latency + battery refresh; dead sockets are closed by uvicorn's own pings
 BADGE_INFO_KEYS = {"name", "fw", "battery", "rssi", "volume", "playing", "muted", "ip", "mac", "uptime_s", "free_heap"}
+MAX_AUDIO_FRAME = 32768    # bytes; anything bigger is not a mic frame (the badge sends ~1 KB)
 
 
 def lan_ip() -> str:
@@ -463,6 +516,31 @@ class Badge:
         self.rtt_ms: int | None = None
         self.config_ack: int | None = None   # last config version the badge confirmed
         self.ping_sent = 0.0
+        self.carry = b""          # odd byte left over from the last frame (keeps 16-bit samples aligned)
+        self.audio_bytes = 0      # since the last heartbeat
+        self.peak_rms = 0.0
+        self.mic_kbps: int | None = None
+        self.mic_level_db: float | None = None
+        self.audio_dropped = 0
+
+    def take_audio(self, data: bytes) -> bytes:
+        """Check a mic frame: drop oversized ones, keep samples aligned, measure rate and loudness."""
+        if len(data) > MAX_AUDIO_FRAME:
+            self.audio_dropped += 1
+            return b""
+        data = self.carry + data
+        self.carry, data = (data[-1:], data[:-1]) if len(data) % 2 else (b"", data)
+        if data:
+            self.audio_bytes += len(data)
+            samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+            self.peak_rms = max(self.peak_rms, float(np.sqrt(np.mean(samples * samples))))
+        return data
+
+    def roll_audio_stats(self, seconds: float):
+        """Heartbeat: turn the counters into kbps (16 kHz 16-bit mono = 256) and a level in dBFS."""
+        self.mic_kbps = round(self.audio_bytes * 8 / 1000 / seconds)
+        self.mic_level_db = round(20 * math.log10(self.peak_rms / 32768), 1) if self.peak_rms > 1 else None
+        self.audio_bytes, self.peak_rms = 0, 0.0
 
     def report(self, msg: dict):
         """Keep the fields the badge reports about itself (known keys, short scalar values)."""
@@ -479,7 +557,56 @@ class Badge:
         return {"id": self.id, "active": active, **self.info, "rtt_ms": self.rtt_ms,
                 "seen_s_ago": round(time.monotonic() - self.last_seen, 1),
                 "online_s": round(time.time() - self.connected_at),
-                "config_synced": self.config_ack == config_v}
+                "config_synced": self.config_ack == config_v,
+                "mic_kbps": self.mic_kbps, "mic_level_db": self.mic_level_db, "audio_dropped": self.audio_dropped}
+
+
+# ---------------------------------------------------------------- pairing (who may connect)
+# Devices other than this laptop (badge, phone, other laptops) need the pairing code: as ?token=... on the URL or
+# an X-Larpslator-Token header. Set LARPSLATOR_TOKEN to choose it; otherwise one is made once and saved.
+PAIRING_FILE = HERE / "state" / "pairing.json"
+CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"   # no 0/o/1/l/i, easy to type on a phone
+
+
+def load_pairing_code() -> str:
+    if os.getenv("LARPSLATOR_TOKEN"):
+        return os.environ["LARPSLATOR_TOKEN"]
+    try:
+        return json.loads(PAIRING_FILE.read_text())["code"]
+    except (OSError, json.JSONDecodeError, KeyError):
+        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+        PAIRING_FILE.parent.mkdir(exist_ok=True)
+        PAIRING_FILE.write_text(json.dumps({"code": code}))
+        return code
+
+
+PAIRING_CODE = load_pairing_code()
+
+
+def authorized(conn) -> bool:
+    """Request or WebSocket. This laptop's own browser is trusted, unless a web page from somewhere else is
+    trying to reach the local server (checked by Origin). Everyone else needs the pairing code."""
+    given = conn.query_params.get("token") or conn.headers.get("x-larpslator-token") or ""
+    if given and secrets.compare_digest(given.encode(), PAIRING_CODE.encode()):
+        return True
+    host = conn.client.host if conn.client else ""
+    if os.getenv("LARPSLATOR_REQUIRE_TOKEN") or not (host == "::1" or host.startswith("127.")):
+        return False
+    origin = conn.headers.get("origin")
+    return origin in (None, "null") or urlparse(origin).hostname in ("localhost", "127.0.0.1", "::1")
+
+
+def require_pairing(request: Request):
+    if not authorized(request):
+        raise HTTPException(401, "pairing code required")
+
+
+def pairing_info() -> dict:
+    ip, port = lan_ip(), os.getenv("PORT") or "8000"
+    https = os.getenv("LARPSLATOR_HTTPS_PORT")
+    page = f"https://{ip}:{https}" if https else f"http://{ip}:{port}"
+    return {"code": PAIRING_CODE, "dashboard_url": f"{page}/?token={PAIRING_CODE}",
+            "badge_url": f"ws://{ip}:{port}/ws/badge?token={PAIRING_CODE}"}
 
 
 # ---------------------------------------------------------------- server state
@@ -540,7 +667,7 @@ class State:
         return {"t": "status", "listening": self.listening, "target": self.target,
                 "contexts": contexts, "badge": self.badge is not None,
                 "badges": self.badges_info(), "badge_config": {"v": self.config_v, **self.badge_config()},
-                "badge_url": f"ws://{lan_ip()}:{os.getenv('PORT') or 8000}/ws/badge",
+                "badge_url": pairing_info()["badge_url"], "pairing": pairing_info(),
                 "context_name": self.context_name, "context": self.context,
                 "languages": LANGUAGES, "packs": list_contexts(), "voice": VOICE.info(),
                 "voice_recording": self.recording and round(self.recording["speech_ms"] / 1000, 1)}
@@ -585,7 +712,16 @@ async def send_audio_to_badge(pcm: bytes):
     state.segmenter.reset()  # drop any half-heard sentence; the badge mic is muted now
     for i in range(0, len(pcm), SEND_CHUNK_BYTES):
         chunk = pcm[i:i + SEND_CHUNK_BYTES]
-        await state.badge.send_bytes(chunk)
+        ws = state.badge
+        if ws is None:
+            log.warning("badge went offline during playback")
+            return
+        try:
+            await ws.send_bytes(chunk)
+        except Exception as e:
+            log.warning("playback to badge failed: %s", e)
+            report(e, step="badge_playback")
+            return
         # Stay slightly ahead of playback so the badge buffer never runs dry or overflows.
         await asyncio.sleep(len(chunk) / (SAMPLE_RATE * 2) * 0.85)
 
@@ -640,7 +776,7 @@ async def retry_with_next_option(uid: int, blamed: dict):
         return
     r = {**utt, "terms": terms}
     timing = {}
-    await asyncio.to_thread(translate_and_speak, r, timing)
+    await asyncio.to_thread(retranslate, r, timing)
     r["timing_ms"], r["retry"] = timing, utt["retry"] + 1
     state.utterances[uid] = r
     log_timing(uid, r)
@@ -659,7 +795,7 @@ async def worker():
                 await retry_with_next_option(job[1], job[2])
         except Exception as e:
             log.error("%s skipped: %s: %s", job[0], type(e).__name__, e)
-            report(e)
+            report(e, step="pipeline")  # no-op if a stage already reported it
             await broadcast({"t": "error", "id": job[1] if job[0] == "retry" else None,
                              "msg": f"{type(e).__name__}: {e}"})
 
@@ -759,6 +895,7 @@ async def badge_heartbeat():
     while True:
         await asyncio.sleep(BADGE_PING_S)
         for b in list(state.badges.values()):
+            b.roll_audio_stats(BADGE_PING_S)
             b.ping_sent = time.monotonic()
             await send_to_badge(b, {"t": "ping"})
         if state.badges:
@@ -852,7 +989,7 @@ async def finish_voice_setup(name: str, wav: bytes, speech_s: float) -> str | No
             await asyncio.to_thread(VOICE.clone, name, wav)
         except Exception as e:
             log.error("voice setup failed: %s", e)
-            report(e)
+            report(e, step="voice_clone")
             error = f"voice setup failed: {type(e).__name__}: {e}"
     if error:
         await broadcast({"t": "error", "id": None, "msg": error})
@@ -909,7 +1046,13 @@ async def health():
     return {"ok": True, "badge": state.badge is not None}
 
 
-@app.post("/api/voice")
+@app.get("/api/config")
+async def client_config():
+    """What the dashboard needs before connecting. The Sentry DSN is public by design (it can only send events)."""
+    return {"sentry_dsn": os.getenv("SENTRY_DSN") or "", "environment": os.getenv("SENTRY_ENVIRONMENT") or "local"}
+
+
+@app.post("/api/voice", dependencies=[Depends(require_pairing)])
 async def upload_voice(request: Request, name: str = "My voice"):
     """Voice setup from the browser mic: the dashboard POSTs a WAV recording here."""
     wav = await request.body()
@@ -921,7 +1064,7 @@ async def upload_voice(request: Request, name: str = "My voice"):
     return VOICE.info()
 
 
-@app.get("/api/voice/test")
+@app.get("/api/voice/test", dependencies=[Depends(require_pairing)])
 async def test_voice(text: str = ""):
     """Speak a short line in the current voice so the user can check it sounds like them."""
     line = text or {"Korean": "안녕하세요, 이제 제 목소리로 통역합니다.", "Spanish": "Hola, ahora traduzco con mi propia voz."}.get(
@@ -929,7 +1072,7 @@ async def test_voice(text: str = ""):
     try:
         pcm, _ = await asyncio.to_thread(synthesize, line, "neutral")
     except Exception as e:
-        report(e)
+        report(e, step="elevenlabs")
         raise HTTPException(502, f"{type(e).__name__}: {e}")
     return Response(pcm_to_wav(pcm), media_type="audio/wav")
 
@@ -943,6 +1086,10 @@ async def reference_dashboard():
 @app.websocket("/ws/badge")
 async def badge_ws(ws: WebSocket):
     await ws.accept()
+    if not authorized(ws):
+        log.warning("badge from %s rejected: wrong or missing pairing code", ws.client.host if ws.client else "?")
+        await ws.close(code=4401, reason="pairing code required")
+        return
     state.badge_seq += 1
     badge = Badge(ws, state.badge_seq)
     state.badges[badge.id] = badge
@@ -955,7 +1102,8 @@ async def badge_ws(ws: WebSocket):
 
     async def on_audio(pcm: bytes):
         badge.last_seen = time.monotonic()
-        if badge.id != state.active_badge:
+        pcm = badge.take_audio(pcm)
+        if not pcm or badge.id != state.active_badge:
             return  # online but not the connected badge
         if state.recording:
             await record_voice_sample(pcm)
@@ -981,6 +1129,10 @@ async def badge_ws(ws: WebSocket):
 @app.websocket("/ws/dashboard")
 async def dashboard_ws(ws: WebSocket):
     await ws.accept()
+    if not authorized(ws):
+        # Accept-then-close so the browser sees the code (a refused handshake looks like any network error).
+        await ws.close(code=4401, reason="pairing code required")
+        return
     state.dashboards.add(ws)
     await ws.send_json(state.status())
     await ws.send_json(ML.metrics())

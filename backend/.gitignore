@@ -2,3 +2,4 @@ logs/
 state/
 out_*.wav
 .models/
+certs/

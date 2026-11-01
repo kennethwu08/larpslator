@@ -12,6 +12,10 @@
  *
  * Which backend: same host when the page is served by the backend (http://<laptop>:8000),
  * else localhost:8000, or ?server=192.168.1.20:8000 to choose.
+ *
+ * Pairing: devices other than the laptop need the pairing code. It comes from ?token=... on the URL
+ * (the dashboard's "Pair Another Device" link) and is remembered on this device. A wrong or missing
+ * code makes the backend close the socket with code 4401 -> "unauthorized" event; call setToken(code).
  */
 (function () {
   "use strict";
@@ -24,6 +28,15 @@
         try { fn(msg, type); } catch (e) { console.error(`handler for "${type}" failed`, e); }
       }
     }
+  }
+
+  const TOKEN_KEY = "larpslator-token";
+  function loadToken() {
+    const fromUrl = new URLSearchParams(location.search).get("token");
+    try {
+      if (fromUrl) localStorage.setItem(TOKEN_KEY, fromUrl);
+      return fromUrl || localStorage.getItem(TOKEN_KEY) || "";
+    } catch { return fromUrl || ""; }
   }
 
   function serverAddress() {
@@ -39,17 +52,21 @@
       this.address = address;
       this.secure = location.protocol === "https:";
       this.connected = false;
+      this.token = loadToken();
       this._connect();
     }
 
     get httpBase() { return `${this.secure ? "https" : "http"}://${this.address}`; }
 
     _connect() {
-      const ws = new WebSocket(`${this.secure ? "wss" : "ws"}://${this.address}/ws/dashboard`);
+      const q = this.token ? `?token=${encodeURIComponent(this.token)}` : "";
+      const ws = new WebSocket(`${this.secure ? "wss" : "ws"}://${this.address}/ws/dashboard${q}`);
       ws.onopen = () => { this.connected = true; this.emit("open"); };
-      ws.onclose = () => {
-        if (this.connected) this.emit("close");
+      ws.onclose = e => {
+        const was = this.connected;
         this.connected = false;
+        if (e.code === 4401) { this.emit("unauthorized"); return; }  // wait for setToken()
+        if (was) this.emit("close");
         setTimeout(() => this._connect(), 1000);  // the backend restarts often during the hackathon
       };
       ws.onmessage = e => {
@@ -62,7 +79,23 @@
 
     _send(msg) {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
-      else console.warn("not connected, dropped", msg);
+      else { console.warn("not connected, dropped", msg); this.emit("send_failed", msg); }
+    }
+
+    _headers(extra = {}) { return this.token ? { ...extra, "X-Larpslator-Token": this.token } : extra; }
+
+    /** Save a pairing code on this device and reconnect with it. */
+    setToken(code) {
+      this.token = (code || "").trim();
+      try { localStorage.setItem(TOKEN_KEY, this.token); } catch { /* private mode: keep it in memory */ }
+      if (this.ws && this.ws.readyState <= WebSocket.OPEN) this.ws.close();
+      else this._connect();
+    }
+
+    /** { sentry_dsn, environment } for monitoring.js. */
+    async getConfig() {
+      const r = await fetch(`${this.httpBase}/api/config`);
+      return r.ok ? r.json() : {};
     }
 
     // ------------------------------------------------------------ commands
@@ -97,13 +130,15 @@
     /** Voice setup from a browser recording (see Larp.recordMicrophone). Resolves to status.voice. */
     async voiceUpload(wavBlob, name) {
       const r = await fetch(`${this.httpBase}/api/voice?name=${encodeURIComponent(name || "My voice")}`,
-        { method: "POST", body: wavBlob, headers: { "Content-Type": "audio/wav" } });
+        { method: "POST", body: wavBlob, headers: this._headers({ "Content-Type": "audio/wav" }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `voice setup failed (${r.status})`);
       return body;
     }
     /** URL of a short WAV in the current voice, for an <audio> element. */
-    voiceTestUrl() { return `${this.httpBase}/api/voice/test?t=${Date.now()}`; }
+    voiceTestUrl() {
+      return `${this.httpBase}/api/voice/test?t=${Date.now()}${this.token ? "&token=" + encodeURIComponent(this.token) : ""}`;
+    }
   }
 
   // ------------------------------------------------------------ browser microphone -> WAV

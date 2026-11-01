@@ -18,12 +18,13 @@
   }
   function setConn(text, kind) { $("conn-text").textContent = text; $("conn-dot").className = "dot " + kind; }
   function enable(on) {
-    for (const id of ["listen", "lang", "voice-open", "voice-test", "notes-open", "reset"]) $(id).disabled = !on;
+    for (const id of ["listen", "lang", "voice-open", "voice-test", "notes-open", "pair-open", "reset"]) $(id).disabled = !on;
   }
 
   // ---------------------------------------------------------------- connection + status
   $("pill-mock").hidden = !larp.mock;
-  larp.on("open", () => setConn("Connected", "on"));
+  window.LarpMonitor?.init(larp);
+  larp.on("open", () => { setConn("Connected", "on"); if ($("code-sheet").open) $("code-sheet").close(); });
   larp.on("close", () => { setConn("Reconnecting…", "bad"); enable(false); });
 
   larp.on("status", m => {
@@ -114,11 +115,20 @@
       ["Wi-Fi", active.rssi != null ? `${wifi(active.rssi)} (${active.rssi} dBm)` : "—"],
       ["Latency", active.rtt_ms != null ? `${active.rtt_ms} ms` : "—"],
       ["Address", active.ip || "—"],
+      ["Microphone", mic(active)],
       ["Settings", active.config_synced ? '<span class="ok">Up to Date</span>' : "Updating…"],
       ["Language on Badge", esc(cfg.target || "—")],
     ];
     $("badge-about").innerHTML = about.map(([k, v]) =>
       `<div class="row"><span>${k}</span><span class="about-value">${k === "Settings" || k === "Language on Badge" ? v : esc(v)}</span></div>`).join("");
+  }
+
+  // Mic health from the backend: 16 kHz 16-bit mono is 256 kbps; level is the loudest moment in the last 5 s.
+  function mic(b) {
+    if (b.mic_kbps == null) return "—";
+    if (!b.mic_kbps) return "Not streaming";
+    const rate = b.mic_kbps >= 230 ? "Good" : "Choppy";
+    return `${rate} · ${b.mic_kbps} kbps${b.mic_level_db != null ? ` · ${Math.round(b.mic_level_db)} dB` : ""}${b.audio_dropped ? ` · ${b.audio_dropped} dropped` : ""}`;
   }
 
   function setVolume(v) { $("badge-volume").value = v; $("badge-volume").style.setProperty("--pct", v + "%"); }
@@ -201,6 +211,33 @@
     const audio = new Audio(url);
     try { await audio.play(); } catch { toast("Couldn't play the sample"); }
   };
+
+  // ---------------------------------------------------------------- pairing
+  $("pair-open").onclick = () => {
+    const p = status?.pairing || {};
+    $("pair-code").textContent = p.code || "—";
+    $("pair-url").textContent = p.dashboard_url || "—";
+    $("pair-badge").textContent = p.badge_url || "—";
+    $("pair-sheet").showModal();
+  };
+  $("pair-close").onclick = () => $("pair-sheet").close();
+  async function copy(text, what) {
+    try { await navigator.clipboard.writeText(text); toast(`${what} copied`); } catch { toast("Select the text to copy it"); }
+  }
+  $("pair-copy-url").onclick = () => copy($("pair-url").textContent, "Link");
+  $("pair-copy-badge").onclick = () => copy($("pair-badge").textContent, "Badge address");
+
+  larp.on("unauthorized", () => {
+    setConn("Not paired", "bad");
+    enable(false);
+    $("code-error").textContent = larp.token ? "That code didn't work. Check it and try again." : "";
+    if (!$("code-sheet").open) $("code-sheet").showModal();
+    $("code-input").focus();
+  });
+  const submitCode = () => { if ($("code-input").value.trim()) { larp.setToken($("code-input").value); $("code-error").textContent = "Connecting…"; } };
+  $("code-submit").onclick = submitCode;
+  $("code-input").onkeydown = e => { if (e.key === "Enter") submitCode(); };
+  $("code-sheet").addEventListener("cancel", e => e.preventDefault());  // nothing works until paired
 
   // ---------------------------------------------------------------- notes
   function renderNotes(m, first) {

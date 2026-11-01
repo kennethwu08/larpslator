@@ -106,6 +106,7 @@
     <h2 class="group-title">Session</h2>
     <div class="group">
       <button class="row link" id="notes-open" disabled><span>Notes</span><span class="value" id="notes-value">None</span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
+      <button class="row link" id="pair-open" disabled><span>Pair Another Device</span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
     </div>
     <p class="footnote">Names and terms for this conversation. Sent with each sentence that needs them.</p>
 
@@ -195,11 +196,34 @@
   </div>
 </dialog>
 
+<dialog id="pair-sheet" class="sheet" aria-labelledby="pair-title">
+  <div class="sheet-head"><h2 id="pair-title">Pair Another Device</h2><button class="close" id="pair-close" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button></div>
+  <p class="secondary">Phones, other laptops and badges need this code to connect. Only share it with your team.</p>
+  <div class="group">
+    <div class="row"><span>Pairing Code</span><span class="value mono" id="pair-code">…</span></div>
+  </div>
+  <h3 class="group-title">Dashboard on Another Device</h3>
+  <div class="group"><button class="row link" id="pair-copy-url"><span class="mono wrap" id="pair-url">…</span><span class="value accent-text">Copy</span></button></div>
+  <p class="footnote">Same Wi-Fi as this laptop. The browser warns about the certificate once; continue to the site.</p>
+  <h3 class="group-title">Badge Server (config.h)</h3>
+  <div class="group"><button class="row link" id="pair-copy-badge"><span class="mono wrap" id="pair-badge">…</span><span class="value accent-text">Copy</span></button></div>
+</dialog>
+
+<dialog id="code-sheet" class="sheet" aria-labelledby="code-title">
+  <div class="sheet-head"><h2 id="code-title">Enter Pairing Code</h2></div>
+  <p class="secondary">This device isn't paired yet. The code is on the laptop running Larpslator, under Session, Pair Another Device.</p>
+  <div class="group"><label class="row" for="code-input"><span>Code</span><input id="code-input" class="inline-input mono" autocomplete="off" autocapitalize="off" spellcheck="false"></label></div>
+  <p class="secondary small" id="code-error" role="alert"></p>
+  <div class="sheet-actions"><button id="code-submit" class="button primary">Connect</button></div>
+</dialog>
+
 <div id="toast" class="toast" role="status" hidden></div>
 
 <script src="vendor/chart.umd.js"></script>
 <script src="js/api.js"></script>
+<script src="vendor/sentry.min.js"></script>
 <script src="js/mock.js"></script>
+<script src="js/monitoring.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

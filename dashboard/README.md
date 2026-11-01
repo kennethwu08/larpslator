@@ -9,7 +9,7 @@ The app people see during the demo: what the badge heard, the translation, which
 | **Fake data** (start here) | `dashboard/index.html?mock=play` (double-click the file, then add `?mock=play` to the URL) | nothing |
 | Fake data, idle | `index.html?mock` (press Listen yourself) | nothing |
 | Real backend | `http://localhost:8000` (the backend serves this folder) | backend running, see [../backend/README.md](../backend/README.md) |
-| Real backend on another laptop | `index.html?server=192.168.1.20:8000` | same Wi-Fi/hotspot |
+| Real backend from another device | `https://<laptop-ip>:8443/?token=<code>` (Session → Pair Another Device) | same Wi-Fi/hotspot |
 
 The **MOCK DATA** pill in the header tells you which one you're looking at. The backend's own minimal test page is at `http://localhost:8000/reference`.
 
@@ -36,6 +36,8 @@ css/style.css       all styling; colors are variables at the top
 js/app.js           UI: renders events, wires up buttons (edit freely)
 js/api.js           backend client: the ONLY code that knows the protocol  ⚠ don't change without the backend
 js/mock.js          fake backend with the same API, for ?mock                ⚠ keep in sync with api.js
+js/monitoring.js    Sentry for the dashboard (DSN from the backend's /api/config)
+vendor/sentry.min.js @sentry/browser 8.55.0, kept locally
 vendor/chart.umd.js Chart.js 4.4.1, kept locally so it works on bad Wi-Fi
 ```
 

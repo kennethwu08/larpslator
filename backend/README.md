@@ -28,13 +28,24 @@ cp .env.example .env        # in the repo root; paste in your three API keys
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
+python serve.py        # http :8000 for the badge + https :8443 for other devices, one shared server
 ```
 
 The first start downloads the `all-MiniLM-L6-v2` model (~90 MB, into `backend/.models/`), so do it before you're on venue Wi-Fi. After that the ML starts without internet. It runs on ONNX (`fastembed`), not PyTorch: ~3 ms per sentence and ~250 MB of RAM for the whole server.
 
-- Dashboard: http://localhost:8000 (the team's app in `dashboard/`; the backend's minimal test page is at `/reference`)
-- Badge connects to `ws://<laptop-ip>:8000/ws/badge` (find the IP with `ipconfig getifaddr en0` on macOS). The laptop and badge must be on the same network (the phone hotspot).
+`serve.py` prints the links. In short:
+- Dashboard on this laptop: http://localhost:8000 (the backend's minimal test page is at `/reference`)
+- Other devices (phone, second laptop): `https://<laptop-ip>:8443/?token=<pairing code>`, also under Session → Pair Another Device. Accept the certificate warning once.
+- Badge: `ws://<laptop-ip>:8000/ws/badge?token=<pairing code>` in its `config.h`. Laptop and badge on the same network (the phone hotspot).
+- Plain `uvicorn main:app --host 0.0.0.0 --port 8000` still works (no https port).
+
+## Security
+
+- **Pairing code.** Everything except this laptop's own browser needs it: the badge, phones, other laptops, and the HTTP API. Wrong or missing code: the WebSocket is closed with `4401`, HTTP returns `401`. Set it with `LARPSLATOR_TOKEN`, or one is generated once and saved in `state/pairing.json`.
+- **Web pages can't hijack the local server.** A page from another site open on this laptop is rejected (checked by `Origin`), even though the laptop itself is trusted.
+- **HTTPS for browsers** on `:8443` (self-signed certificate for this laptop's IP, made in `certs/` on first run and again when the IP changes). Phones need it for the microphone. The badge stays on plain `ws://` on `:8000` because TLS is heavy for an ESP32; the Wi-Fi itself (WPA2 hotspot) encrypts that hop.
+- **Audio integrity.** Mic frames over 32 KB are dropped; odd-sized frames are realigned so 16-bit samples never shift. Each badge reports mic health (data rate, level, dropped frames) every 5 s; the dashboard shows it under About → Microphone ("Good · 256 kbps · −28 dB").
+- **Faster drop detection.** WebSocket pings every 10 s (serve.py and Render).
 
 ## Test without the badge
 
@@ -120,9 +131,15 @@ utt 3 | vad 0.4ms | whisper 610ms | ml 11ms | llm 1400ms | elevenlabs 350ms | to
 - **The badge needs TLS for `wss://`** (port 443): the firmware must use `beginSSL` instead of `begin`. Keep the laptop server as the backup.
 - The whole server uses ~250 MB of RAM, so it fits the free 512 MB instance.
 
-## Sentry (optional)
+## Sentry
 
-Set `SENTRY_DSN` and every crash, plus every skipped sentence (API errors), shows up in Sentry with its traceback, so you don't have to watch the terminal during the demo. Leave it empty to turn Sentry off.
+Set `SENTRY_DSN` (Sentry → Project Settings → Client Keys) in `.env` and in Render's environment. Without it, Sentry is off and costs nothing.
+
+- **Each failing service is its own issue.** Whisper, local ML, translation (LLM), ElevenLabs, voice cloning and badge playback errors are reported with a `step` tag (`whisper`, `local_ml`, `translation`, `elevenlabs`, `voice_clone`, `badge_playback`). A sentence's error is reported once. Using the fallback LLM is reported as a warning.
+- **Traces:** each sentence is a trace (`translate sentence`) with a span per stage, so the Performance view shows which step is slow. `SENTRY_TRACES_SAMPLE_RATE` (default 0.2).
+- **Unhandled server errors** are captured automatically (FastAPI integration). Log lines become breadcrumbs on issues, not issues of their own.
+- **Dashboard:** `@sentry/browser` (in `dashboard/vendor/`) uses the same DSN via `/api/config`. It reports JavaScript errors, the WebSocket dropping, commands sent while disconnected, and rejected pairing codes.
+- **Demo:** keep the Sentry Issues page open on a second screen and filter by `step` to see what broke.
 
 ## Messages and data formats
 
@@ -132,6 +149,8 @@ See [../docs/messages.md](../docs/messages.md) for every WebSocket message (with
 
 | Variable | Default |
 |---|---|
+| `LARPSLATOR_TOKEN` | the pairing code; generated and saved if empty |
+| `SENTRY_DSN` / `SENTRY_TRACES_SAMPLE_RATE` | Sentry off if empty / `0.2` |
 | `ELEVENLABS_VOICE_ID` | empty; voice setup on the dashboard sets the voice. Set this to reuse a clone (e.g. on Render) |
 | `ELEVENLABS_MODEL` | `eleven_flash_v2_5` |
 | `FEATHERLESS_MODEL` | `mistralai/Mistral-Small-3.2-24B-Instruct-2506` (any chat model on featherless.ai) |

@@ -10,7 +10,7 @@ services:
     buildCommand: >-
       pip install -r requirements.txt &&
       python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/all-MiniLM-L6-v2', cache_dir='.models')"
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --ws-ping-interval 10 --ws-ping-timeout 10
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -27,5 +27,9 @@ services:
         sync: false
       - key: SENTRY_ENVIRONMENT
         value: render
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.2"
+      - key: LARPSLATOR_TOKEN
+        generateValue: true   # the pairing code; read it in Render's Environment tab
       - key: TARGET_LANGUAGE
         value: Korean

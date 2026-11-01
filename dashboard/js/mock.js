@@ -73,7 +73,8 @@
         domain: "auto", voice: this.s.voice.ready ? this.s.voice.name : "", voice_setup: this.s.recording !== null };
     }
     _badges() {
-      return Object.values(this.badges).map(b => ({ ...b, active: b.id === this.s.activeBadge, seen_s_ago: 0.4, config_synced: true }));
+      return Object.values(this.badges).map(b => ({ ...b, active: b.id === this.s.activeBadge, seen_s_ago: 0.4, config_synced: true,
+        mic_kbps: this.s.listening ? 256 : 0, mic_level_db: this.s.listening ? -rand(24, 38) : null, audio_dropped: 0 }));
     }
 
     _status() {
@@ -87,7 +88,8 @@
         languages: ["Korean", "Spanish", "French", "Mandarin Chinese", "Japanese", "German", "English"],
         voice: { ...this.s.voice }, voice_recording: this.s.recording,
         badge: !!this.s.activeBadge, badges: this._badges(), badge_config: this._badgeConfig(),
-        badge_url: "ws://172.20.10.2:8000/ws/badge",
+        badge_url: "ws://172.20.10.2:8000/ws/badge?token=demo2345",
+        pairing: { code: "demo2345", dashboard_url: "https://172.20.10.2:8443/?token=demo2345", badge_url: "ws://172.20.10.2:8000/ws/badge?token=demo2345" },
       });
     }
 
@@ -188,6 +190,8 @@
       return { ...this.s.voice };
     }
     voiceTestUrl() { return null; }  // no audio in mock mode
+    setToken() { this._status(); }
+    async getConfig() { return {}; }
   }
 
   window.LarpMock = LarpMock;

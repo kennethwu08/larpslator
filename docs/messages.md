@@ -2,6 +2,15 @@
 
 All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 kHz, 16-bit, mono, little-endian.
 
+## Pairing (security)
+Every device except the laptop's own browser needs the **pairing code** (dashboard: Session → Pair Another Device):
+- WebSockets: add `?token=<code>` to the URL, e.g. `ws://<laptop-ip>:8000/ws/badge?token=<code>`.
+- HTTP API (`/api/voice`, `/api/voice/test`): `?token=<code>` or the header `X-Larpslator-Token: <code>`.
+- Wrong or missing code: the socket is accepted and then closed with code **4401**; HTTP returns **401**.
+- Ports (with `python serve.py`): `:8000` plain http/ws (the badge), `:8443` https/wss (browsers on other devices; phones need https for the mic).
+
+Mic frames: any size up to 32 KB (bigger frames are dropped). Odd-sized frames are fine: the server keeps samples aligned.
+
 ## Badge -> server  (`ws://<laptop-ip>:8000/ws/badge`)
 The dashboard shows the exact address under Badge → "How to connect a badge".
 Everything except audio + `ptt` is optional: a badge that only streams audio and sends buttons still works.
@@ -71,14 +80,17 @@ Several badges can be online; only the one **connected** on the dashboard is use
  "packs":[{"name":"CS lab","text":"...","saved_at":"2026-11-01 10:02:11"}],
  "voice":{"ready":true,"name":"Bernard","voice_id":"abc123"},"voice_recording":null}
 ```
-- `badges`: every badge online, with whatever it reported. `active` = the connected one. `config_synced` = it confirmed the latest `config`.
+- `pairing`: `{code, dashboard_url, badge_url}` for the "Pair Another Device" sheet (only sent to paired dashboards).
+- `badges`: every badge online, with whatever it reported. `mic_kbps` (256 = full 16 kHz audio arriving), `mic_level_db`
+  (loudest moment in the last 5 s, dBFS) and `audio_dropped` show whether the mic audio is good. `active` = the connected one. `config_synced` = it confirmed the latest `config`.
   `badge_config` = what was last pushed to the connected badge. `badge_url` = the address to put in the badge's `config.h`.
   `badge` (bool) = a badge is connected.
   ```json
   "badge":true,"badge_url":"ws://172.20.10.2:8000/ws/badge",
   "badge_config":{"v":4,"listening":true,"target":"Korean","fields":["tennis","math"],"larp":true,"domain":"auto","voice":"Bernard","voice_setup":false},
   "badges":[{"id":"LC-7F3A","active":true,"name":"Bernard's badge","fw":"0.3","battery":86,"rssi":-55,"volume":70,
-             "ip":"172.20.10.4","rtt_ms":38,"seen_s_ago":0.4,"online_s":312,"config_synced":true}]
+             "ip":"172.20.10.4","rtt_ms":38,"seen_s_ago":0.4,"online_s":312,"config_synced":true,
+             "mic_kbps":256,"mic_level_db":-28.5,"audio_dropped":0}]
   ```
 - `voice.ready` is false until voice setup is done: translations then use a stock voice, and the app should push the user to set up.
   `voice_recording` is the seconds of speech recorded so far while a badge voice setup is running, else null.
