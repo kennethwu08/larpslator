@@ -28,13 +28,13 @@ badge mic ─► voice detection ─► speech-to-text ─► local ML ─► Fe
 | `dashboard/index.html`, `css/`, `js/app.js` | D | Change freely: layout, styling, new views. |
 | `data/` | D + C | Fill in freely, in the formats from `docs/messages.md` (section "Data files"). Keep the file names. Restart the backend to load changes. |
 | `firmware/` | A | Must follow `docs/messages.md`: 16 kHz 16-bit mono PCM, the JSON messages, `ws://<laptop>:8000/ws/badge`. |
-| `render.yaml`, `.env.example` | Bernard (B) | ⚠ |
+| `.env.example` | Bernard (B) | ⚠ |
 
 ## Deliberate choices (please don't "fix")
 
 | Looks like | Why it's on purpose |
 |---|---|
-| Embeddings via `fastembed` (ONNX), not `sentence-transformers` / PyTorch | PyTorch crashed on macOS 14 (Apple GPU backend), used 527 MB (over Render's 512 MB free tier) and is a 1.2 GB install. ONNX: same model, 250 MB, 3 ms/sentence, starts offline. |
+| Embeddings via `fastembed` (ONNX), not `sentence-transformers` / PyTorch | PyTorch crashed on macOS 14 (Apple GPU backend), used 527 MB and is a 1.2 GB install. ONNX: same model, 250 MB, 3 ms/sentence, starts offline. |
 | Speech to text is ElevenLabs Scribe | Featherless has no speech-to-text endpoint. Scribe uses the ElevenLabs key we already have, takes ~0.6 s, handles Korean/Tamil and gets jargon via `keyterms`; a speech model run locally took 2.9 s, ~900 MB RAM and heard "kernel" as "colonel". |
 | The LLM only gets a short plain-text prompt, no JSON, no tone | Cheapest and fastest. Field, tone, jargon and context trimming are all done locally for free; the LLM just translates. |
 | Featherless model is Mistral Small 3.2, with Mistral Nemo as fallback | Benchmarked on 12 sentences: 0 wrong-language replies, ~1.4 s. Qwen 2.5 7B/14B drifted into English/Chinese on Korean. Replies are script-checked; wrong language → fallback model. |
@@ -56,7 +56,7 @@ badge mic ─► voice detection ─► speech-to-text ─► local ML ─► Fe
 
 **Evaluation (Nov 1, `python backend/evaluate.py`):** jargon right in English → Tamil: plain translator 13%, Larpslator 100%; Korean → English: 93% → 100% (15 sentences each, term presence).
 
-**Not tested yet:** voice cloning with a real account, the badge (firmware not written yet), Render.
+**Not tested yet:** voice cloning with a real account, the badge (firmware not written yet), the cloudflared tunnel.
 
 ## To run
 
@@ -64,6 +64,7 @@ badge mic ─► voice detection ─► speech-to-text ─► local ML ─► Fe
 cp .env.example .env                    # paste FEATHERLESS_API_KEY, ELEVENLABS_API_KEY
 cd backend && pip install -r requirements.txt
 python serve.py                         # prints the dashboard links, badge address and pairing code
+cloudflared tunnel --url http://localhost:8000   # for the demo: a public https address
 ```
 Dashboard: http://localhost:8000. Without keys or a badge: open `dashboard/index.html?mock=play`.
 
@@ -72,7 +73,7 @@ Dashboard: http://localhost:8000. Without keys or a badge: open `dashboard/index
 | Who | What |
 |---|---|
 | Everyone | Only two keys: Featherless (translation) and ElevenLabs (speech to text, voice, cloning); both are in `.env`. ElevenLabs key needs **Voices → Write** permission for voice setup, and a paid plan (Starter+) for voice cloning. |
-| A | Firmware per `docs/messages.md`. Connect to `ws://<laptop-ip>:8000/ws/badge?token=<pairing code>` (the code is on the dashboard: Session → Pair Another Device; without it the server closes the socket with 4401). Minimum: audio + `ptt` + `fb`. For the badge panel: send `hello` (stable `id` from the MAC), `state`, answer `ping`; handle `config`, `active`, `identify`, `volume`. For Render: `wss://` with `beginSSL`. |
+| A | Firmware per `docs/messages.md`. Connect to `ws://<laptop-ip>:8000/ws/badge?token=<pairing code>` (the code is on the dashboard: Session → Pair Another Device; without it the server closes the socket with 4401). Minimum: audio + `ptt` + `fb`. For the badge panel: send `hello` (stable `id` from the MAC), `state`, answer `ping`; handle `config`, `active`, `identify`, `volume`. Through the cloudflared tunnel: `wss://` with `beginSSL`. |
 | C + D | `data/` is wired in (both directions, Tamil, `academia.json` = math). Still open: a Tamil speaker reviews `TAMIL_REVIEW.md` items and a Korean speaker checks `CHECK.md`; Tamil/English-Korean entries have one option each, so add wrong-meaning alternatives for the 👎 demo; `data/README.md` still lists academia/med and mentions a `backend/translate.py` that doesn't exist (use `python backend/evaluate.py`); optional `train.jsonl`. |
 | D | Style the dashboard for the projector; plain-vs-Larpslator comparison for the demo. |
 

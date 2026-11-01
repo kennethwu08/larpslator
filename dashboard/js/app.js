@@ -44,11 +44,11 @@
     }
     $("lang").value = m.target;
 
-    renderContexts(m.contexts || []);
-    renderVoice(m.voice || {}, m.voice_recording);
-    renderBadges(m.badges || []);
-    renderNotes(m, first);
-    renderSetup(m);
+    showContexts(m.contexts || []);
+    showVoice(m.voice || {}, m.voice_recording);
+    showBadges(m.badges || []);
+    showNotes(m, first);
+    showSetup(m);
   });
 
   $("listen").onclick = () => { if (status) larp.setListening(!status.listening); };
@@ -59,7 +59,7 @@
     return `<label class="row"><span>${esc(c.label)}${c.source === "data" ? "" : '<span class="row-sub">Starter glossary</span>'}</span>
       <input type="checkbox" class="switch" data-id="${esc(c.id)}" ${c.on ? "checked" : ""} aria-label="${esc(c.label)}"></label>`;
   }
-  function renderContexts(contexts) {
+  function showContexts(contexts) {
     const fields = contexts.filter(c => c.kind === "field"), styles = contexts.filter(c => c.kind === "style");
     const sig = JSON.stringify(contexts);
     if ($("contexts").dataset.sig === sig) return;
@@ -73,9 +73,9 @@
 
   // ---------------------------------------------------------------- badge (AirPods-style page)
   const wifi = rssi => rssi == null ? "—" : rssi > -60 ? "Excellent" : rssi > -72 ? "Good" : "Weak";
-  larp.on("badges", m => { if (status) { status.badges = m.badges; renderBadges(m.badges || []); renderSetup(status); } });
+  larp.on("badges", m => { if (status) { status.badges = m.badges; showBadges(m.badges || []); showSetup(status); } });
 
-  function renderBadges(badges) {
+  function showBadges(badges) {
     const active = badges.find(b => b.active);
     const name = b => b.name || b.id;
     $("badge-url").textContent = status?.badge_url || "…";
@@ -153,7 +153,7 @@
     $("rec-browser").disabled = on;
     $("rec-stop").disabled = $("rec-cancel").disabled = !on || uploading;
   }
-  function renderVoice(v, badgeRecording) {
+  function showVoice(v, badgeRecording) {
     $("voice-value").textContent = v.ready ? v.name || "Your voice" : "Not set up";
     $("voice-value").style.color = v.ready ? "" : "var(--orange)";
     const recordingOnBadge = badgeRecording !== null && badgeRecording !== undefined;
@@ -242,7 +242,7 @@
   $("code-sheet").addEventListener("cancel", e => e.preventDefault());  // nothing works until paired
 
   // ---------------------------------------------------------------- notes
-  function renderNotes(m, first) {
+  function showNotes(m, first) {
     $("notes-value").textContent = m.context_name || "None";
     const sig = JSON.stringify(m.packs || []);
     if ($("packs").dataset.sig !== sig) {
@@ -331,7 +331,7 @@
     el.querySelector(".up").onclick = () => larp.feedback(u.id, 1);
     el.querySelector(".down").onclick = () => larp.feedback(u.id, -1);
     el.querySelectorAll(".chip").forEach(c => { c.onclick = () => larp.feedback(u.id, -1, c.dataset.term); });
-    if (el === $("utterances").firstElementChild) { renderFields(u.domain_probs || {}, u.domain); renderTerms(terms, u.id); }
+    if (el === $("utterances").firstElementChild) { showFields(u.domain_probs || {}, u.domain); showTerms(terms, u.id); }
   });
 
   larp.on("feedback", m => {
@@ -380,7 +380,7 @@
   }
 
   // ---------------------------------------------------------------- setup checklist
-  function renderSetup(m) {
+  function showSetup(m) {
     const badges = m.badges || [], badge = badges.find(b => b.active), voice = m.voice?.ready;
     $("setup").hidden = !!(badge && voice);
     $("step-badge").className = "step" + (badge ? " done" : "");
@@ -442,14 +442,14 @@
   });
 
   // ---------------------------------------------------------------- insights
-  function renderFields(probs, chosen) {
+  function showFields(probs, chosen) {
     $("fields").innerHTML = Object.entries(probs).sort((a, b) => b[1] - a[1]).map(([d, p]) => {
       const pct = Math.round(p * 100);
       return `<div class="field ${d === chosen ? "top" : ""}"><div class="field-label"><span>${esc(LABELS[d] || d)}</span><span>${pct}%</span></div>
         <div class="track" role="meter" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(LABELS[d] || d)}"><div class="fill" style="width:${pct}%"></div></div></div>`;
     }).join("");
   }
-  function renderTerms(terms, id) {
+  function showTerms(terms, id) {
     $("terms").innerHTML = terms.length ? terms.map(t => `
       <div class="term"><div class="term-word">${esc(t.match)}<span>${esc(LABELS[t.domain] || t.domain)}</span></div>
         <div class="options">${(t.options || []).map(o => o === t.choice

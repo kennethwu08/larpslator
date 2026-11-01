@@ -8,6 +8,13 @@ Every device except the laptop's own browser needs the **pairing code** (dashboa
 - HTTP API (`/api/voice`, `/api/voice/test`): `?token=<code>` or the header `X-Larpslator-Token: <code>`.
 - Wrong or missing code: the socket is accepted and then closed with code **4401**; HTTP returns **401**.
 - Ports (with `python serve.py`): `:8000` plain http/ws (the badge), `:8443` https/wss (browsers on other devices; phones need https for the mic).
+- Requests through a tunnel or proxy (headers `Cf-Connecting-Ip`, `X-Forwarded-For`, `Forwarded`, `X-Real-Ip`) always need the code.
+
+## Deployment
+Run the backend locally (`python serve.py`) and expose it for the demo with `cloudflared tunnel --url http://localhost:8000`.
+Through the tunnel everything uses its https address: the page, `wss://<host>/ws/dashboard`, `/ws/badge`, `/ws/web`.
+Set `PUBLIC_URL` to that address so the pairing links use it. The dashboard connects to the host it was loaded from;
+if it's hosted separately (e.g. on Vercel), open it with `?server=<tunnel host>`.
 
 Mic frames: any size up to 32 KB (bigger frames are dropped). Odd-sized frames are fine: the server keeps samples aligned.
 
@@ -50,7 +57,7 @@ For when the badge hardware fails: the dashboard's **Web Audio** section uses th
 Same pipeline and same audio format as the badge (voice detection → speech to text with ElevenLabs Scribe →
 local ML → Featherless translation → ElevenLabs voice); the browser is just a second audio client.
 
-**On/off:** environment variable `WEB_AUDIO_FALLBACK=1` (in `.env` locally, Render's Environment tab in production);
+**On/off:** environment variable `WEB_AUDIO_FALLBACK=1` in `.env`;
 anything else, or unset, is off. Restart the backend after changing it. Off: `GET /api/web-audio` returns 404 (the
 dashboard hides the section) and `/ws/web` refuses the connection. The flag is checked only in `backend/web_audio.py`.
 

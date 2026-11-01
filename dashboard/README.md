@@ -33,7 +33,7 @@ keyboard shortcuts (`?` lists them: Space listen, L LARP, 1-4 contexts, ↑/↓ 
 ```
 index.html          layout (restyle/rearrange freely)
 css/style.css       all styling; colors are variables at the top
-js/app.js           UI: renders events, wires up buttons (edit freely)
+js/app.js           UI: shows events, wires up buttons (edit freely)
 js/api.js           backend client: the ONLY code that knows the protocol  ⚠ don't change without the backend
 js/mock.js          fake backend with the same API, for ?mock                ⚠ keep in sync with api.js
 js/monitoring.js    Sentry for the dashboard (DSN from the backend's /api/config)

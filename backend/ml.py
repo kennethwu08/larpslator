@@ -112,7 +112,7 @@ class LocalML:
         self.larp = self._load_larp(seeds)
 
         log.info("loading %s (first run downloads ~90 MB)", EMBED_MODEL)
-        # ONNX instead of PyTorch: same model, ~3 ms per sentence, and small enough for Render's 512 MB tier.
+        # ONNX instead of PyTorch: same model, ~3 ms per sentence, ~250 MB for the whole server instead of 527 MB.
         self.model = TextEmbedding(EMBED_MODEL, cache_dir=str(MODEL_DIR))
 
         # Field classifier over all fields; unchecked ones are masked out at prediction time.

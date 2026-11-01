@@ -45,7 +45,7 @@ The first start downloads the `all-MiniLM-L6-v2` model (~90 MB, into `backend/.m
 - **Web pages can't hijack the local server.** A page from another site open on this laptop is rejected (checked by `Origin`), even though the laptop itself is trusted.
 - **HTTPS for browsers** on `:8443` (self-signed certificate for this laptop's IP, made in `certs/` on first run and again when the IP changes). Phones need it for the microphone. The badge stays on plain `ws://` on `:8000` because TLS is heavy for an ESP32; the Wi-Fi itself (WPA2 hotspot) encrypts that hop.
 - **Audio integrity.** Mic frames over 32 KB are dropped; odd-sized frames are realigned so 16-bit samples never shift. Each badge reports mic health (data rate, level, dropped frames) every 5 s; the dashboard shows it under About → Microphone ("Good · 256 kbps · −28 dB").
-- **Faster drop detection.** WebSocket pings every 10 s (serve.py and Render).
+- **Faster drop detection.** WebSocket pings every 10 s (serve.py).
 
 ## Test without the badge
 
@@ -65,9 +65,9 @@ The dashboard can be the translator itself: its **Web Audio** section uses the b
 pipeline as the badge (same 16 kHz audio, voice detection, speech to text with ElevenLabs Scribe, local ML, Featherless
 translation, ElevenLabs voice). Off by default.
 
-- **Turn on:** `WEB_AUDIO_FALLBACK=1` in `.env` (or Render's Environment tab), restart. **Off:** remove it or set `0`.
+- **Turn on:** `WEB_AUDIO_FALLBACK=1` in `.env`, restart. **Off:** remove it or set `0`.
 - **Remove for good:** delete `web_audio.py`, `dashboard/js/web-audio.js`, `dashboard/js/pcm-worklet.js`, and the lines marked `WEB_AUDIO` in `main.py` and `dashboard/index.html`.
-- The mic needs `localhost` or https (`https://<laptop-ip>:8443` with `serve.py`, or the Render URL).
+- The mic needs `localhost` or https (`https://<laptop-ip>:8443` with `serve.py`, or the cloudflared address).
 
 **Test it:**
 ```bash
@@ -101,7 +101,7 @@ Translations are spoken in **the user's own voice**, cloned with ElevenLabs Inst
 
 - The clone is multilingual (`eleven_flash_v2_5`), so it speaks Korean or Spanish in your voice. `similarity_boost` is 0.9 to stay close to you.
 - It's saved in `state/voice.json` and reused on restart. Redoing setup replaces the old clone (and deletes it from ElevenLabs to free the slot).
-- The voice id is shown on the dashboard. Put it in `.env` as `ELEVENLABS_VOICE_ID` to keep it where the disk gets wiped (Render), or to share one voice across laptops.
+- The voice id is shown on the dashboard. Put it in `.env` as `ELEVENLABS_VOICE_ID` to keep it if `state/` is cleared, or to share one voice across laptops.
 - **Instant voice cloning needs a paid ElevenLabs plan (Starter or above).** On the free plan, setup fails with an error from ElevenLabs.
 - "Record in browser" needs `localhost` or https (browsers block the mic on plain `http://<lan-ip>`). Otherwise use the badge.
 
@@ -145,18 +145,20 @@ Every sentence logs its timing:
 utt 3 | vad 0.4ms | stt 590ms | ml 11ms | llm 1400ms | elevenlabs 350ms | total 1351ms | cs/neutral | 'The kernel...' -> '커널이...' | terms {'kernel': '커널'}
 ```
 
-## Host it on Render (optional)
+## Deployment: run locally, share with cloudflared
 
-`render.yaml` in the repo root is a Render Blueprint: in Render, **New → Blueprint**, pick this repo, paste the keys it asks for. The dashboard is then at `https://<service>.onrender.com` and the badge connects to `wss://<service>.onrender.com/ws/badge`.
-
-- **Free tier sleeps after 15 minutes idle,** and waking takes about a minute. Open `/health` a few minutes before the demo (and keep the dashboard tab open, so its WebSocket keeps it awake).
-- **Disk is wiped on every restart/deploy:** saved context packs, learned term choices and caches start over. Put context packs you need into the repo's `backend/contexts/`.
-- **The badge needs TLS for `wss://`** (port 443): the firmware must use `beginSSL` instead of `begin`. Keep the laptop server as the backup.
-- The whole server uses ~250 MB of RAM, so it fits the free 512 MB instance.
+The backend runs on the laptop (`python serve.py`, port 8000). For the demo, expose it with a Cloudflare tunnel:
+```bash
+cloudflared tunnel --url http://localhost:8000      # prints https://<random>.trycloudflare.com
+```
+- Open that https address on any device: the dashboard, the WebSockets (`wss://`) and the microphone work through it.
+- Devices coming through the tunnel need the pairing code (`?token=<code>`), even though the tunnel connects from the laptop itself. Set `PUBLIC_URL=https://<random>.trycloudflare.com` in `.env` so Session → Pair Another Device shows tunnel links.
+- A badge connecting through the tunnel needs TLS (`wss://…/ws/badge?token=<code>`, `beginSSL` in the firmware); on the same Wi-Fi as the laptop it can use `ws://<laptop-ip>:8000/ws/badge?token=<code>`.
+- If the dashboard is hosted separately (e.g. on Vercel, serving only the `dashboard/` folder), open it with `?server=<random>.trycloudflare.com` so it talks to the laptop. Otherwise the dashboard always uses the address it was loaded from.
 
 ## Sentry
 
-Set `SENTRY_DSN` (Sentry → Project Settings → Client Keys) in `.env` and in Render's environment. Without it, Sentry is off and costs nothing.
+Set `SENTRY_DSN` (Sentry → Project Settings → Client Keys) in `.env`. Without it, Sentry is off and costs nothing.
 
 - **Each failing service is its own issue.** Speech to text, local ML, translation (LLM), ElevenLabs, voice cloning and badge playback errors are reported with a `step` tag (`speech_to_text`, `local_ml`, `translation`, `elevenlabs`, `voice_clone`, `badge_playback`). A sentence's error is reported once. Using the fallback LLM is reported as a warning.
 - **Traces:** each sentence is a trace (`translate sentence`) with a span per stage, so the Performance view shows which step is slow. `SENTRY_TRACES_SAMPLE_RATE` (default 0.2).
@@ -191,10 +193,11 @@ See [../docs/messages.md](../docs/messages.md) for every WebSocket message (with
 |---|---|
 | `LARPSLATOR_TOKEN` | the pairing code; generated and saved if empty |
 | `SENTRY_DSN` / `SENTRY_TRACES_SAMPLE_RATE` | Sentry off if empty / `0.2` |
-| `ELEVENLABS_VOICE_ID` | empty; voice setup on the dashboard sets the voice. Set this to reuse a clone (e.g. on Render) |
+| `ELEVENLABS_VOICE_ID` | empty; voice setup on the dashboard sets the voice. Set this to reuse a clone (e.g. on another laptop) |
 | `ELEVENLABS_MODEL` | `eleven_flash_v2_5` |
 | `FEATHERLESS_MODEL` | `mistralai/Mistral-Small-3.2-24B-Instruct-2506` (any chat model on featherless.ai) |
 | `FEATHERLESS_FALLBACK_MODEL` | `mistralai/Mistral-Nemo-Instruct-2407`, used if the main model errors or answers in the wrong language |
 | `SENTRY_DSN` | empty = Sentry off |
-| `SENTRY_ENVIRONMENT` | `local` (`render` on Render) |
+| `SENTRY_ENVIRONMENT` | `local` |
+| `PUBLIC_URL` | empty; the cloudflared https address, for the pairing links |
 | `TARGET_LANGUAGE` | `Korean` |

@@ -263,7 +263,7 @@ function showVoice(v, recording) {
   $("voicepill").textContent = v.ready ? `voice: ${v.name}` : "voice: stock (set up!)";
   $("voicepill").className = "pill " + (v.ready ? "on" : "bad");
   $("voicestate").innerHTML = v.ready
-    ? `Translations are spoken in <b>${esc(v.name)}</b>'s cloned voice.<br><span title="put this in .env as ELEVENLABS_VOICE_ID to keep it on Render">voice id: ${esc(v.voice_id)}</span>`
+    ? `Translations are spoken in <b>${esc(v.name)}</b>'s cloned voice.<br><span title="put this in .env as ELEVENLABS_VOICE_ID to keep it across machines">voice id: ${esc(v.voice_id)}</span>`
     : `<span class="warn">⚠ Translations use a stock voice. Set up your voice first so the badge sounds like you.</span>`;
   $("voicesummary").textContent = v.ready ? "Redo voice setup" : "Set up your voice";
   if (!v.ready && !$("voicesetup").dataset.touched) $("voicesetup").open = true;

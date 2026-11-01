@@ -352,8 +352,8 @@ def clean_output(text: str, target: str = "") -> str:
 class Voice:
     """Whose voice ElevenLabs speaks in: the user's own clone once voice setup is done.
 
-    Saved to state/voice.json. ELEVENLABS_VOICE_ID in .env is used if no setup was done here
-    (e.g. on Render, whose disk is wiped on restart). Otherwise a stock voice, flagged on the dashboard.
+    Saved to state/voice.json. ELEVENLABS_VOICE_ID in .env is used if no setup was done on this machine
+    (e.g. another laptop). Otherwise a stock voice, flagged on the dashboard.
     """
     FILE = HERE / "state" / "voice.json"
 
@@ -643,14 +643,21 @@ def load_pairing_code() -> str:
 PAIRING_CODE = load_pairing_code()
 
 
+# A tunnel or reverse proxy (cloudflared) connects from 127.0.0.1 too; these headers show the request came through
+# one, i.e. from the internet, so it isn't treated as this laptop.
+PROXY_HEADERS = ("cf-connecting-ip", "x-forwarded-for", "forwarded", "x-real-ip")
+
+
 def authorized(conn) -> bool:
     """Request or WebSocket. This laptop's own browser is trusted, unless a web page from somewhere else is
-    trying to reach the local server (checked by Origin). Everyone else needs the pairing code."""
+    trying to reach the local server (checked by Origin) or the request came through a tunnel/proxy.
+    Everyone else needs the pairing code."""
     given = conn.query_params.get("token") or conn.headers.get("x-larpslator-token") or ""
     if given and secrets.compare_digest(given.encode(), PAIRING_CODE.encode()):
         return True
     host = conn.client.host if conn.client else ""
-    if os.getenv("LARPSLATOR_REQUIRE_TOKEN") or not (host == "::1" or host.startswith("127.")):
+    local = (host == "::1" or host.startswith("127.")) and not any(h in conn.headers for h in PROXY_HEADERS)
+    if os.getenv("LARPSLATOR_REQUIRE_TOKEN") or not local:
         return False
     origin = conn.headers.get("origin")
     return origin in (None, "null") or urlparse(origin).hostname in ("localhost", "127.0.0.1", "::1")
@@ -662,6 +669,12 @@ def require_pairing(request: Request):
 
 
 def pairing_info() -> dict:
+    """Links for "Pair Another Device". PUBLIC_URL (e.g. the cloudflared https address) wins over the LAN address."""
+    public = (os.getenv("PUBLIC_URL") or "").rstrip("/")
+    if public:
+        ws = re.sub(r"^http", "ws", public)  # https -> wss, http -> ws
+        return {"code": PAIRING_CODE, "dashboard_url": f"{public}/?token={PAIRING_CODE}",
+                "badge_url": f"{ws}/ws/badge?token={PAIRING_CODE}"}
     ip, port = lan_ip(), os.getenv("PORT") or "8000"
     https = os.getenv("LARPSLATOR_HTTPS_PORT")
     page = f"https://{ip}:{https}" if https else f"http://{ip}:{port}"
@@ -1144,7 +1157,7 @@ async def receive_loop(ws: WebSocket, on_bytes=None, on_json=handle_control):
 # ---------------------------------------------------------------- routes
 @app.get("/health")
 async def health():
-    """For Render's health check (and a quick "is it up?")."""
+    """A quick "is it up?" (e.g. through the cloudflared tunnel)."""
     return {"ok": True, "badge": state.badge is not None}
 
 
