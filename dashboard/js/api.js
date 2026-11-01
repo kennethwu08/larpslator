@@ -8,6 +8,7 @@
  *   larp.on("utterance", u => ...);         // events = message types from docs/messages.md,
  *   larp.on("open" | "close", () => ...);   //   plus "open" / "close" for the connection
  *   larp.toggleContext("tennis", true);     // commands, see below
+ *   larp.connectBadge("AB12");              // badges: status.badges / "badges" event
  *
  * Which backend: same host when the page is served by the backend (http://<laptop>:8000),
  * else localhost:8000, or ?server=192.168.1.20:8000 to choose.
@@ -78,6 +79,14 @@
       this._send(msg);
     }
     resetLearning() { this._send({ t: "reset" }); }
+
+    // badges (ids come from status.badges / the "badges" event)
+    /** Use this badge's mic and buttons; the backend pushes it the current config. */
+    connectBadge(id) { this._send({ t: "badge", action: "connect", id }); }
+    disconnectBadge() { this._send({ t: "badge", action: "disconnect" }); }
+    /** Blink/beep the badge so you can tell which one it is. */
+    identifyBadge(id) { this._send({ t: "badge", action: "identify", id }); }
+    setBadgeVolume(id, value) { this._send({ t: "badge", action: "volume", id, value }); }
 
     // voice setup from the badge mic
     voiceRecordOnBadge(name) { this._send({ t: "voice", action: "record", name }); }

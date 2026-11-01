@@ -48,6 +48,15 @@ python test_pipeline.py sample.wav --contexts math,larp      # only math checked
 
 It prints every stage's output and timing (field, tone, terms found, which context lines went to Gemini) and saves each translation as `out_<n>.wav`.
 
+## Badges
+
+The backend controls the badge. The dashboard's **Badge** panel lists every badge online. **Connect** picks the one whose mic and buttons are used (the first one online is connected automatically). It shows the badge's language, contexts, LARP, listening state, voice, battery, Wi-Fi, latency, firmware and whether it confirmed the latest settings, and has Identify (blink), volume and Disconnect.
+
+- Whenever anything changes on the dashboard, the backend pushes the badge a `config` message (language, contexts, LARP, listening, voice). The badge can show it on LEDs and confirms it with `config_v`.
+- A ping every 5 s gives latency and battery. Dead connections are closed by uvicorn's own WebSocket pings.
+- The panel shows the address for the badge's `config.h` (`ws://<this laptop's IP>:8000/ws/badge`), which changes with the network (hotspot).
+- All badge info messages are optional, so firmware that only streams audio and buttons still works. Protocol: [../docs/messages.md](../docs/messages.md).
+
 ## Voice setup (do this first)
 
 Translations are spoken in **the user's own voice**, cloned with ElevenLabs Instant Voice Cloning. Until setup is done, a stock voice is used and the dashboard shows a warning.

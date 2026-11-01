@@ -40,8 +40,13 @@
       <div class="row"><button id="voice-open" class="secondary-button" disabled>Set up voice <span>↗</span></button><button id="voice-test" class="icon-button" title="Play a sample of the current voice" aria-label="Play voice sample" disabled>▷</button></div>
       <audio id="voice-audio"></audio>
     </section>
+    <section class="settings-section" id="badge-card">
+      <div class="section-heading"><h3>04 / Your badge</h3><span class="subtle-icon">⌁</span></div>
+      <p id="badge-summary" class="small muted">No badge online yet.</p>
+      <div class="row"><button id="badge-open" class="secondary-button" disabled>Connect badge <span>↗</span></button><button id="badge-identify" class="icon-button" title="Blink the badge so you can find it" aria-label="Identify badge" disabled>◎</button></div>
+    </section>
     <section class="settings-section notes-section">
-      <details id="notes-details"><summary>04 / Session notes <span>＋</span></summary>
+      <details id="notes-details"><summary>05 / Session notes <span>＋</span></summary>
         <p class="small muted">Names, terminology, and a little extra context.</p>
         <label class="sr-only" for="packs">Saved notes</label><select id="packs"><option value="">Load saved notes…</option></select>
         <label class="sr-only" for="notes-name">Notes name</label><input id="notes-name" placeholder="e.g. Tuesday tennis club">
@@ -85,6 +90,24 @@
   <div class="row"><button id="rec-browser" class="primary-button">Record in browser</button><button id="rec-badge" class="secondary-button">Record on badge</button></div>
   <div class="row"><button id="rec-stop" class="primary-button" disabled>Stop &amp; create voice</button><button id="rec-cancel" class="secondary-button" disabled>Cancel recording</button></div>
   <p id="rec-progress" class="small muted" role="status">Only record a voice you have permission to use.</p>
+</dialog>
+<dialog id="badge-dialog" aria-labelledby="badge-title">
+  <div class="dialog-heading"><span class="eyebrow">YOUR BADGE</span><button id="badge-close" class="icon-button" aria-label="Close badge settings">×</button></div>
+  <h2 id="badge-title">Small badge.<br><span>Always in sync.</span></h2>
+  <p class="muted">Pick the badge to use. It gets your language, contexts and voice automatically.</p>
+  <div id="badge-list" class="badge-list"></div>
+  <div id="badge-detail" hidden>
+    <dl id="badge-info" class="badge-info"></dl>
+    <label class="input-label" for="badge-volume">Speaker volume</label><input id="badge-volume" type="range" min="0" max="100" step="5">
+    <div class="row"><button id="badge-identify-dialog" class="secondary-button">Identify (blink)</button><button id="badge-disconnect" class="secondary-button">Disconnect</button></div>
+  </div>
+  <details id="badge-help" class="badge-help"><summary>How to connect a new badge <span>＋</span></summary>
+    <ol class="small muted">
+      <li>Put the laptop and the badge on the same Wi-Fi (the phone hotspot).</li>
+      <li>In the badge's <code>config.h</code>, set the server to <code id="badge-url">…</code></li>
+      <li>Turn the badge on. It appears above; choose <strong>Connect</strong>.</li>
+    </ol>
+  </details>
 </dialog>
 <div id="toast" class="toast" role="status" hidden></div>
 <script src="vendor/chart.umd.js"></script>

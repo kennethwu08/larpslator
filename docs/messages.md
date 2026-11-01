@@ -3,8 +3,18 @@
 All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 kHz, 16-bit, mono, little-endian.
 
 ## Badge -> server  (`ws://<laptop-ip>:8000/ws/badge`)
-- Binary frames: mic audio (512-sample chunks are fine; any size works)
-- `{"t":"hello"}`: badge connected (the server replies with the current `mode`)
+The dashboard shows the exact address under Badge → "How to connect a badge".
+Everything except audio + `ptt` is optional: a badge that only streams audio and sends buttons still works.
+Several badges can be online; only the one **connected** on the dashboard is used (the first one online is connected automatically).
+
+- Binary frames: mic audio (512-sample chunks are fine; any size works). Only used from the connected badge.
+- `{"t":"hello","id":"LC-7F3A","name":"Bernard's badge","fw":"0.3","battery":87,"rssi":-54,"volume":70}`:
+  send first after connecting. `id` should stay the same across reboots (e.g. from the MAC address), so a
+  rebooted badge is recognized and reconnected. All fields optional.
+- `{"t":"state","battery":86,"rssi":-55,"volume":70,"playing":false,"muted":false,"config_v":4}`: whenever
+  something changes (all fields optional). `config_v` = the `v` of the last `config` you applied; the
+  dashboard then shows "synced ✓".
+- `{"t":"pong","battery":86}`: reply to `ping` (gives the dashboard the latency; extra fields like `state`).
 - `{"t":"ptt","state":"start"}`: talk button pressed (starts listening)
 - `{"t":"ptt","state":"end"}`: talk button released (ends the sentence right away and stops listening)
 - `{"t":"fb","val":1}` / `{"t":"fb","val":-1}`: thumbs up / down on the latest sentence. Up credits every jargon choice.
@@ -13,7 +23,14 @@ All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 
   `auto` checks every field; a field name checks only that field. LARP stays as it was.
 
 ## Server -> badge
-- `{"t":"mode","domain":"cs"}`: the checked field if exactly one is checked, else `auto`. Sent on connect and whenever the checkboxes change
+- `{"t":"active","value":true}`: this badge is (or isn't) the connected one. Inactive badges can show an idle LED; their audio and buttons are ignored.
+- `{"t":"config","v":4,"listening":true,"target":"Korean","fields":["tennis","math"],"larp":true,"domain":"auto","voice":"Bernard","voice_setup":false}`:
+  everything the badge might show (LEDs/screen). Sent on connect and whenever anything changes; `v` goes up each time.
+  `voice` is empty while a stock voice is used; `voice_setup` is true while the user is recording their voice sample.
+- `{"t":"mode","domain":"cs"}`: same info for older firmware: the checked field if exactly one is checked, else `auto`.
+- `{"t":"ping"}`: every 5 s; answer with `pong`.
+- `{"t":"identify"}`: blink the LED / beep so the user can tell which badge this is.
+- `{"t":"volume","value":70}`: speaker volume 0-100.
 - Binary frames: translated speech to play, sent in 100 ms frames (3200 bytes) at about real time.
   The server never starts a new clip until the previous one has finished plus 300 ms.
   The badge should mute its mic while playing; the server also ignores mic audio during that window.
@@ -29,6 +46,10 @@ All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 
 {"t":"voice","action":"record","name":"Bernard"}   // voice setup: start recording the badge mic
 {"t":"voice","action":"stop"}                      // ...stop and create the voice clone
 {"t":"voice","action":"cancel"}
+{"t":"badge","action":"connect","id":"LC-7F3A"}    // use this badge (id from status.badges)
+{"t":"badge","action":"disconnect"}                // use no badge (it stays online)
+{"t":"badge","action":"identify","id":"LC-7F3A"}   // make it blink
+{"t":"badge","action":"volume","id":"LC-7F3A","value":70}
 ```
 
 ## Voice setup over HTTP (browser microphone)
@@ -48,6 +69,15 @@ All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 
  "packs":[{"name":"CS lab","text":"...","saved_at":"2026-11-01 10:02:11"}],
  "voice":{"ready":true,"name":"Bernard","voice_id":"abc123"},"voice_recording":null}
 ```
+- `badges`: every badge online, with whatever it reported. `active` = the connected one. `config_synced` = it confirmed the latest `config`.
+  `badge_config` = what was last pushed to the connected badge. `badge_url` = the address to put in the badge's `config.h`.
+  `badge` (bool) = a badge is connected.
+  ```json
+  "badge":true,"badge_url":"ws://172.20.10.2:8000/ws/badge",
+  "badge_config":{"v":4,"listening":true,"target":"Korean","fields":["tennis","math"],"larp":true,"domain":"auto","voice":"Bernard","voice_setup":false},
+  "badges":[{"id":"LC-7F3A","active":true,"name":"Bernard's badge","fw":"0.3","battery":86,"rssi":-55,"volume":70,
+             "ip":"172.20.10.4","rtt_ms":38,"seen_s_ago":0.4,"online_s":312,"config_synced":true}]
+  ```
 - `voice.ready` is false until voice setup is done: translations then use a stock voice, and the app should push the user to set up.
   `voice_recording` is the seconds of speech recorded so far while a badge voice setup is running, else null.
 - `contexts` is the list of checkboxes, in display order. `kind: "field"` is a subject (the backend detects which checked field
@@ -83,6 +113,11 @@ All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 
 `metrics`: term accuracy for the learning curve (only sentences that contained jargon). `curve` is a rolling average over the last `window` ratings.
 ```json
 {"t":"metrics","n":6,"accuracy":0.67,"curve":[0,0.5,0.67,0.75,0.8,0.8],"window":5}
+```
+
+`badges`: every 5 s while a badge is online (battery, latency), and when a badge sends `state`. Same list as `status.badges`.
+```json
+{"t":"badges","badges":[{"id":"LC-7F3A","active":true,"battery":85,"rtt_ms":41,"...":"..."}]}
 ```
 
 `voice_progress`: during voice setup (about once a second), then once when ElevenLabs is creating the voice

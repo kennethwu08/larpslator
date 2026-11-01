@@ -25,6 +25,7 @@
   function activeConnection(connected) {
     $("listen").disabled = $("lang").disabled = $("notes-save").disabled = $("voice-open").disabled = $("reset").disabled = !connected;
     $("voice-test").disabled = !connected;
+    $("badge-open").disabled = !connected;
     $("contexts").querySelectorAll("input").forEach(input => { input.disabled = !connected; });
   }
   $("pill-mock").hidden = !larp.mock;
@@ -51,13 +52,13 @@
     $("session-state").textContent = m.listening ? (larp.mock ? "A conversation, in motion" : "Listening to your conversation") : "A moment of quiet";
     $("session-hint").textContent = m.listening ? (larp.mock ? "Simulated conversation · no microphone or API calls" : "Speak naturally. Your badge is listening.") : "Press Start listening when you're ready.";
     $("feed-label").textContent = m.listening ? "Live updates" : "Session paused";
-    setPill("pill-badge", m.badge ? (larp.mock ? "Demo badge online" : "Badge connected") : "Badge offline", m.badge ? "on" : "bad");
     const languages = Array.isArray(m.languages) ? m.languages : [];
     if (JSON.stringify([...$("lang").options].map(o => o.value)) !== JSON.stringify(languages)) {
       $("lang").innerHTML = languages.map(l => '<option value="' + esc(l) + '">' + esc(l) + "</option>").join("");
     }
     $("lang").value = m.target;
     $("target-caption").textContent = m.target;
+    renderBadges(m.badges || []);
     renderContexts(m.contexts || []);
     renderVoice(m.voice || {}, m.voice_recording);
     const signature = JSON.stringify(m.packs || []);
@@ -196,6 +197,61 @@
     $("voice-audio").src = url;
     try { await $("voice-audio").play(); } catch (_) { toast("Couldn't play the voice sample. Check your connection and voice setup."); }
   };
+
+  // Badge: the backend tracks every badge online; the user picks one, and the backend keeps it in sync.
+  const wifi = rssi => rssi == null ? "unknown" : rssi > -60 ? "strong" : rssi > -72 ? "good" : "weak";
+  larp.on("badges", m => { if (status) { status.badges = m.badges; renderBadges(m.badges || []); } });  // 5 s heartbeat
+  $("badge-open").onclick = () => $("badge-dialog").showModal();
+  $("badge-close").onclick = () => $("badge-dialog").close();
+  $("badge-disconnect").onclick = () => { larp.disconnectBadge(); toast("Badge disconnected. It stays online until you connect it again."); };
+  const identify = () => {
+    const active = (status?.badges || []).find(b => b.active);
+    if (active) { larp.identifyBadge(active.id); toast("Your badge is blinking."); }
+  };
+  $("badge-identify").onclick = $("badge-identify-dialog").onclick = identify;
+
+  function renderBadges(badges) {
+    const active = badges.find(b => b.active);
+    const name = b => b.name || b.id;
+    setPill("pill-badge", active ? (larp.mock ? "Demo badge · " : "Badge · ") + name(active) : badges.length ? "Badge not connected" : "Badge offline", active ? "on" : "bad");
+    $("badge-summary").textContent = active
+      ? name(active) + (active.battery != null ? " · " + active.battery + "% battery" : "") + (active.config_synced ? " · in sync" : "")
+      : badges.length ? badges.length + " badge" + (badges.length > 1 ? "s" : "") + " online. Choose one to connect." : "No badge online yet.";
+    $("badge-open").innerHTML = (active ? "Manage badge" : "Connect badge") + "<span>↗</span>";
+    $("badge-identify").disabled = !active;
+    $("badge-url").textContent = status?.badge_url || "…";
+    if (!badges.length && !$("badge-help").dataset.touched) $("badge-help").open = true;
+
+    $("badge-list").innerHTML = badges.length ? badges.map(b =>
+      '<div class="badge-row"><div><div class="badge-name">' + esc(name(b)) + '</div><div class="badge-stats">' +
+      (b.battery != null ? esc(b.battery) + "% battery · " : "") + "Wi-Fi " + wifi(b.rssi) + '</div></div>' +
+      '<button class="secondary-button ' + (b.active ? "connected" : "") + '" data-id="' + esc(b.id) + '" ' + (b.active ? "disabled" : "") + ">" + (b.active ? "Connected" : "Connect") + "</button></div>"
+    ).join("") : '<p class="muted small" style="margin-top:12px">No badge online. See "How to connect a new badge" below.</p>';
+    $("badge-list").querySelectorAll("button[data-id]").forEach(button => {
+      button.onclick = () => { larp.connectBadge(button.dataset.id); toast("Connecting your badge…"); };
+    });
+
+    $("badge-detail").hidden = !active;
+    if (!active || !status) return;
+    const cfg = status.badge_config || {};
+    const fields = (status.contexts || []).filter(c => (cfg.fields || []).includes(c.id)).map(c => c.label);
+    const rows = [
+      ["Language", esc(cfg.target)],
+      ["Contexts", esc(fields.join(", ") || "None (everyday words)")],
+      ["Expert style", cfg.larp ? "On" : "Off"],
+      ["Listening", cfg.voice_setup ? "Recording your voice" : cfg.listening ? "Yes" : "Paused"],
+      ["Voice", esc(cfg.voice || "Stock voice")],
+      ["Battery", active.battery != null ? esc(active.battery) + "%" : "Not reported"],
+      ["Wi-Fi", active.rssi != null ? wifi(active.rssi) + " (" + esc(active.rssi) + " dBm)" : "Not reported"],
+      ["Latency", active.rtt_ms != null ? esc(active.rtt_ms) + " ms" : "Measuring…"],
+      ["Firmware", esc(active.fw || "Not reported")],
+      ["Settings", active.config_synced ? '<span class="synced">In sync ✓</span>' : "Sent · waiting for the badge"],
+    ];
+    $("badge-info").innerHTML = rows.map(([k, v]) => "<dt>" + k + "</dt><dd>" + v + "</dd>").join("");
+    if (document.activeElement !== $("badge-volume")) $("badge-volume").value = active.volume ?? 70;
+    $("badge-volume").onchange = event => larp.setBadgeVolume(active.id, Number(event.target.value));
+  }
+  $("badge-help").addEventListener("toggle", () => { $("badge-help").dataset.touched = "1"; });
 
   function card(id) {
     const key = String(id);

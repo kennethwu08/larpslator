@@ -7,7 +7,6 @@
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .utt{flex:0 0 auto}
 
-
 /* LarpHacks identity, sourced from the official event website. */
 .event-credit{display:flex;align-items:center;gap:10px;padding:9px 13px;background:#284d32;border:1px solid #284d32;border-radius:9px;text-decoration:none;flex-shrink:0}
 .event-credit>span{font-size:7px;letter-spacing:1.1px;color:#c7d9bf;white-space:nowrap}
@@ -21,3 +20,20 @@
 .brand-mark{border-radius:11px 11px 11px 3px}
 @media(max-width:1280px){.product-tag{display:none}.event-credit img{width:92px}.event-credit>span{display:none}}
 @media(max-width:700px){.event-credit{padding:6px 9px;margin-left:auto}.event-credit img{width:84px}.topbar>.icon-button{margin-left:0}.main-footer{align-items:center}.main-footer .event-footer img{width:78px}}
+
+/* Badge section + dialog (backend badge control). Uses the tokens above. */
+.badge-list{margin:16px 0 8px;border-top:1px solid var(--line)}
+.badge-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.badge-row .badge-name{font-weight:650}
+.badge-row .badge-stats{font-size:12px;color:var(--muted)}
+.badge-row button{margin-left:auto;white-space:nowrap}
+.badge-row button.connected{background:var(--lavender);border-color:var(--violet);color:var(--purple)}
+.badge-info{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:14px 0 18px;font-size:13px}
+.badge-info dt{color:var(--muted)}
+.badge-info dd{margin:0}
+.badge-info .synced{color:var(--green)}
+#badge-volume{padding:0;margin:6px 0 14px;accent-color:var(--violet)}
+.badge-help{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.badge-help summary{display:flex;justify-content:space-between;color:var(--purple)}
+.badge-help ol{padding-left:18px;margin:10px 0 0}
+.badge-help code{font-size:12px;background:var(--lavender);color:var(--purple);padding:2px 6px;border-radius:5px;word-break:break-all}

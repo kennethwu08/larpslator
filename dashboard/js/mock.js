@@ -44,26 +44,50 @@
       this.mock = true;
       this.connected = false;
       this.s = {
-        listening: false, target: "Korean", badge: true, active: new Set(Object.keys(FIELDS)),
+        listening: false, target: "Korean", active: new Set(Object.keys(FIELDS)),
         notes: { name: "", text: "" }, packs: [], voice: { ready: false, name: "", voice_id: "JBFqnCBsd6RMkjVDRZzb" },
         recording: null,
+        activeBadge: "LC-7F3A", configV: 1,
+      };
+      this.badges = {
+        "LC-7F3A": { id: "LC-7F3A", name: "Bernard's badge", fw: "0.3", battery: 87, rssi: -54, volume: 70, ip: "172.20.10.4", playing: false, rtt_ms: 38, online_s: 0 },
+        "LC-2B90": { id: "LC-2B90", name: "Spare badge", fw: "0.3", battery: 41, rssi: -71, volume: 70, ip: "172.20.10.6", playing: false, rtt_ms: 61, online_s: 0 },
       };
       this.next = 1; this.turn = 0; this.history = []; this.utts = {};
+      setInterval(() => {  // heartbeat, like the backend: battery drains, latency wobbles
+        for (const b of Object.values(this.badges)) {
+          b.online_s += 5; b.rtt_ms = rand(25, 90);
+          if (Math.random() < 0.3) b.battery = Math.max(0, b.battery - 1);
+        }
+        this.emit("badges", { t: "badges", badges: this._badges() });
+      }, 5000);
       setTimeout(() => {
         this.connected = true; this.emit("open"); this._status(); this._metrics();
         if (new URLSearchParams(location.search).get("mock") === "play") this.setListening(true);  // ?mock=play
       }, 300);
     }
 
+    _badgeConfig() {
+      return { v: this.s.configV, listening: this.s.listening, target: this.s.target,
+        fields: Object.keys(FIELDS).filter(d => this.s.active.has(d)), larp: this.s.active.has("larp"),
+        domain: "auto", voice: this.s.voice.ready ? this.s.voice.name : "", voice_setup: this.s.recording !== null };
+    }
+    _badges() {
+      return Object.values(this.badges).map(b => ({ ...b, active: b.id === this.s.activeBadge, seen_s_ago: 0.4, config_synced: true }));
+    }
+
     _status() {
+      this.s.configV++;
       const contexts = Object.entries(FIELDS).map(([id, label]) =>
         ({ id, label, kind: "field", on: this.s.active.has(id), source: "built-in" }));
       contexts.push({ id: "larp", label: "LARP mode", kind: "style", on: this.s.active.has("larp"), source: "built-in" });
       this.emit("status", {
-        t: "status", listening: this.s.listening, target: this.s.target, contexts, badge: this.s.badge,
+        t: "status", listening: this.s.listening, target: this.s.target, contexts,
         context_name: this.s.notes.name, context: this.s.notes.text, packs: this.s.packs,
         languages: ["Korean", "Spanish", "French", "Mandarin Chinese", "Japanese", "German", "English"],
         voice: { ...this.s.voice }, voice_recording: this.s.recording,
+        badge: !!this.s.activeBadge, badges: this._badges(), badge_config: this._badgeConfig(),
+        badge_url: "ws://172.20.10.2:8000/ws/badge",
       });
     }
 
@@ -129,6 +153,11 @@
       }, 600);
     }
     resetLearning() { this.history = []; this._metrics(); }
+
+    connectBadge(id) { if (this.badges[id]) { this.s.activeBadge = id; this._status(); } }
+    disconnectBadge() { this.s.activeBadge = null; this._status(); }
+    identifyBadge(id) { console.log(`[mock] ${id} blinks`); }
+    setBadgeVolume(id, value) { if (this.badges[id]) { this.badges[id].volume = Math.max(0, Math.min(100, value)); this._status(); } }
 
     voiceRecordOnBadge(name) {
       this.s.recording = 0; this._status();
