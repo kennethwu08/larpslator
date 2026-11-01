@@ -1,0 +1,107 @@
+{
+  "_note": "Built-in fallback data so the backend works before data/ is filled in. data/glossaries/<domain>.json and data/train.jsonl are merged on top of this. First option = default translation.",
+
+  "domains": {
+    "cs": [
+      "The kernel scheduler preempts the thread when its time slice ends.",
+      "Can you merge my branch after the CI pipeline passes?",
+      "We have a race condition because the mutex isn't held.",
+      "The cache miss rate went up after we deployed the new build.",
+      "Let's push the fix and open a pull request.",
+      "The compiler optimizes the loop into vector instructions.",
+      "Run the script in a shell and check the stack trace.",
+      "This bug only shows up when the heap is fragmented.",
+      "The API returns a 500 error under heavy load.",
+      "We should refactor the class before adding more features.",
+      "The garbage collector pauses the program for a few milliseconds.",
+      "Store the hash in the database and index that column."
+    ],
+    "med": [
+      "The patient presented with a fever and acute abdominal pain.",
+      "The blood culture came back positive for staph.",
+      "We'll discharge her tomorrow if her vitals stay stable.",
+      "Order a CBC and a chest X-ray, stat.",
+      "The lesion looks benign, but let's do a biopsy.",
+      "He has a history of hypertension and type 2 diabetes.",
+      "Start him on IV antibiotics and monitor his kidney function.",
+      "Her symptoms suggest a viral infection rather than bacterial.",
+      "The MRI showed no sign of a stroke.",
+      "Increase the dose to 500 milligrams twice a day.",
+      "Check the incision site for signs of infection.",
+      "The ER triaged him as a level two."
+    ],
+    "academia": [
+      "My advisor wants me to submit the paper to the conference by Friday.",
+      "The committee approved my thesis defense date.",
+      "Reviewer two asked us to rewrite the abstract.",
+      "She just got tenure in the physics department.",
+      "Our lab is applying for a new research grant this fall.",
+      "The literature review covers the last twenty years of the field.",
+      "I'm presenting a poster at the symposium next month.",
+      "The seminar is cross-listed with the graduate program.",
+      "We need more participants before the study has enough statistical power.",
+      "The journal accepted our manuscript with minor revisions.",
+      "My dissertation chapter on methodology is almost done.",
+      "Office hours are moved to Thursday because of the midterm."
+    ],
+    "general": [
+      "Where should we go for lunch today?",
+      "I'll call you when I get home.",
+      "The weather is really nice this weekend.",
+      "Can you pass me the water bottle?",
+      "Thanks for coming, it was great to see you.",
+      "The train was late again this morning.",
+      "Let's meet at the coffee shop at three.",
+      "I didn't sleep much last night.",
+      "Do you want to watch a movie tonight?",
+      "My phone battery is almost dead.",
+      "How was your trip to Montreal?",
+      "We need to buy groceries before the store closes."
+    ]
+  },
+
+  "tones": {
+    "excited": ["This is amazing, I can't believe it worked!", "We won, that's fantastic news!", "Wow, look at that, it's incredible!", "I'm so happy you made it!"],
+    "calm": ["Take your time, there's no rush.", "Let's slow down and go through it step by step.", "It's okay, everything is fine.", "Just relax and breathe."],
+    "serious": ["This is a critical problem and we have to fix it now.", "I need you to listen carefully, this is important.", "The results are concerning and need attention.", "We cannot ship this until the safety issue is resolved."],
+    "neutral": ["The meeting is at two o'clock.", "Here is the report from last week.", "The file is in the shared folder.", "We have three items on the agenda."]
+  },
+
+  "glossary": {
+    "cs": {
+      "kernel":    {"Korean": ["커널", "알맹이"], "Spanish": ["núcleo", "grano"]},
+      "thread":    {"Korean": ["스레드", "실"], "Spanish": ["hilo", "rosca"]},
+      "bug":       {"Korean": ["버그", "벌레"], "Spanish": ["error", "insecto"]},
+      "cache":     {"Korean": ["캐시", "은닉처"], "Spanish": ["caché", "escondite"]},
+      "deploy":    {"Korean": ["배포하다", "배치하다"], "Spanish": ["desplegar", "implementar"]},
+      "merge":     {"Korean": ["병합하다", "합병하다"], "Spanish": ["fusionar", "combinar"]},
+      "branch":    {"Korean": ["브랜치", "나뭇가지"], "Spanish": ["rama", "sucursal"]},
+      "shell":     {"Korean": ["셸", "조개껍데기"], "Spanish": ["shell", "concha"]},
+      "stack":     {"Korean": ["스택", "더미"], "Spanish": ["pila", "montón"]},
+      "mutex":     {"Korean": ["뮤텍스"], "Spanish": ["mutex"]},
+      "pull request": {"Korean": ["풀 리퀘스트", "끌어오기 요청"], "Spanish": ["pull request", "solicitud de extracción"]}
+    },
+    "med": {
+      "presented with": {"Korean": ["~의 증상을 보였다", "~을 발표했다"], "Spanish": ["presentó", "se presentó con"]},
+      "culture":   {"Korean": ["배양", "문화"], "Spanish": ["cultivo", "cultura"]},
+      "positive":  {"Korean": ["양성", "긍정적"], "Spanish": ["positivo"]},
+      "discharge": {"Korean": ["퇴원시키다", "방출하다"], "Spanish": ["dar de alta", "descargar"]},
+      "stat":      {"Korean": ["즉시", "통계"], "Spanish": ["de inmediato", "estadística"]},
+      "acute":     {"Korean": ["급성", "날카로운"], "Spanish": ["agudo"]},
+      "lesion":    {"Korean": ["병변", "상처"], "Spanish": ["lesión"]},
+      "benign":    {"Korean": ["양성", "온화한"], "Spanish": ["benigno"]},
+      "vitals":    {"Korean": ["활력징후", "필수품"], "Spanish": ["signos vitales"]}
+    },
+    "academia": {
+      "paper":     {"Korean": ["논문", "종이"], "Spanish": ["artículo", "papel"]},
+      "defense":   {"Korean": ["논문 심사", "방어"], "Spanish": ["defensa de tesis", "defensa"]},
+      "advisor":   {"Korean": ["지도교수", "고문"], "Spanish": ["director de tesis", "asesor"]},
+      "committee": {"Korean": ["심사위원회", "위원회"], "Spanish": ["comité de tesis", "comité"]},
+      "conference": {"Korean": ["학회", "회의"], "Spanish": ["congreso", "conferencia"]},
+      "abstract":  {"Korean": ["초록", "추상적인"], "Spanish": ["resumen", "abstracto"]},
+      "tenure":    {"Korean": ["종신 재직권", "임기"], "Spanish": ["plaza permanente", "mandato"]},
+      "field":     {"Korean": ["분야", "들판"], "Spanish": ["campo", "terreno"]}
+    },
+    "general": {}
+  }
+}

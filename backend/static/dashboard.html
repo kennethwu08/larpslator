@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larpslator</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --text:#e8eaf0; --dim:#8b92a3; --accent:#4f8cff; --good:#2ecc71; --bad:#e74c3c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
+  h1 { font-size:20px; margin:0 12px 0 0; }
+  .pill { padding:4px 10px; border-radius:999px; background:var(--panel); color:var(--dim); font-size:14px; }
+  .pill.on { color:var(--good); }
+  button, select, input, textarea { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  button { cursor:pointer; }
+  #listen { min-width:120px; font-weight:600; }
+  #listen.on { background:var(--bad); border-color:var(--bad); }
+  #listen.off { background:var(--good); border-color:var(--good); color:#000; }
+  main { display:grid; grid-template-columns: 320px 1fr; gap:16px; padding:16px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  aside { display:flex; flex-direction:column; gap:16px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; }
+  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); margin:0 0 8px; }
+  textarea { width:100%; min-height:180px; resize:vertical; }
+  .row { display:flex; gap:8px; margin-top:8px; }
+  .row > * { flex:1; min-width:0; }
+  #saved { color:var(--dim); font-size:13px; margin-top:6px; min-height:1em; }
+  .bar { display:grid; grid-template-columns: 80px 1fr 44px; gap:8px; align-items:center; font-size:14px; margin:4px 0; }
+  .bar .track { height:10px; background:var(--bg); border-radius:5px; overflow:hidden; }
+  .bar .fill { height:100%; background:var(--accent); transition: width .3s; }
+  .bar.top .fill { background:var(--good); }
+  .bar span:last-child { text-align:right; color:var(--dim); }
+  #acc { font-size:28px; font-weight:600; }
+  svg { width:100%; height:60px; display:block; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; color:var(--dim); font-weight:500; font-size:13px; padding:6px; border-bottom:1px solid var(--line); }
+  td { vertical-align:top; padding:10px 6px; border-bottom:1px solid var(--line); }
+  td.src, td.dst { width:45%; font-size:18px; }
+  .meta { color:var(--dim); font-size:12px; margin-top:4px; }
+  .chip { cursor:pointer; display:inline-block; font-size:13px; padding:2px 8px; margin:4px 4px 0 0; border-radius:999px; background:#22314d; color:#cfe0ff; }
+  .fb { white-space:nowrap; }
+  .fb button { padding:4px 8px; }
+  .fb button.up.sel { background:var(--good); color:#000; }
+  .fb button.down.sel { background:var(--bad); }
+  tr.error td { color:var(--bad); font-size:14px; }
+  #log { max-height: calc(100vh - 100px); overflow-y:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Larpslator</h1>
+  <button id="listen" class="off">Listen</button>
+  <label>Translate to <select id="lang"></select></label>
+  <label>Field <select id="domain"></select></label>
+  <span id="badge" class="pill">badge: offline</span>
+  <span id="conn" class="pill">server: connecting…</span>
+</header>
+<main>
+  <aside>
+    <section>
+      <h2>Detected field</h2>
+      <div id="bars"><div class="meta">Waiting for the first sentence…</div></div>
+    </section>
+    <section>
+      <h2>Term accuracy</h2>
+      <div id="acc">–</div>
+      <div class="meta" id="accmeta">No feedback yet</div>
+      <svg id="curve" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
+      <div class="row"><button id="reset">Reset learning</button></div>
+    </section>
+    <section>
+      <h2>Meeting context</h2>
+      <select id="packs" style="width:100%"><option value="">Load a saved pack…</option></select>
+      <div class="row"><input id="ctxname" placeholder="Pack name (e.g. CS lab meeting)"></div>
+      <div class="row"><textarea id="ctx" placeholder="One item per line: names, jargon, agenda…&#10;Prof. Lee&#10;kernel = OS kernel (커널)&#10;Agenda: scheduler review"></textarea></div>
+      <div class="row"><button id="save">Save context</button></div>
+      <div id="saved"></div>
+    </section>
+  </aside>
+  <section id="log">
+    <h2>Live transcript</h2>
+    <table>
+      <thead><tr><th>Source</th><th>Translation</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let ws, status = {}, packs = [];
+
+function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function connect() {
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/dashboard`);
+  ws.onopen = () => { $("conn").textContent = "server: connected"; $("conn").classList.add("on"); };
+  ws.onclose = () => {
+    $("conn").textContent = "server: reconnecting…"; $("conn").classList.remove("on");
+    setTimeout(connect, 1000);
+  };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.t === "status") applyStatus(m);
+    else if (m.t === "transcript") rowFor(m.id, m);
+    else if (m.t === "utterance") fillRow(m);
+    else if (m.t === "feedback") markFeedback(m.id, m.val);
+    else if (m.t === "metrics") showMetrics(m);
+    else if (m.t === "error") addError(m);
+  };
+}
+
+function fillSelect(sel, values, current) {
+  if (sel.options.length !== values.length) sel.innerHTML = values.map(v => `<option>${esc(v)}</option>`).join("");
+  sel.value = current;
+}
+
+function applyStatus(m) {
+  const first = status.t === undefined;
+  status = m;
+  $("listen").textContent = m.listening ? "Stop" : "Listen";
+  $("listen").className = m.listening ? "on" : "off";
+  $("badge").textContent = m.badge ? "badge: connected" : "badge: offline";
+  $("badge").classList.toggle("on", m.badge);
+  fillSelect($("lang"), m.languages, m.target);
+  fillSelect($("domain"), m.domain_modes, m.domain_mode);
+
+  packs = m.packs;
+  $("packs").innerHTML = `<option value="">Load a saved pack…</option>` +
+    packs.map((p, i) => `<option value="${i}">${esc(p.name)} (${esc(p.saved_at)})</option>`).join("");
+  // Fill the editor with the active pack only on first load, so typing isn't overwritten.
+  if (first) { $("ctx").value = m.context; $("ctxname").value = m.context_name; }
+  $("saved").textContent = m.context_name ? `Active pack: ${m.context_name}` : "No context pack active";
+}
+
+function rowFor(id, u) {
+  let tr = document.querySelector(`tr[data-id="${id}"]`);
+  if (tr) return tr;
+  tr = document.createElement("tr");
+  tr.dataset.id = id;
+  tr.innerHTML = `<td class="src"></td><td class="dst"><span class="meta">translating…</span></td>
+    <td class="fb"><button class="up" title="Good translation">👍</button> <button class="down" title="Bad: try the next option">👎</button></td>`;
+  tr.querySelector(".src").innerHTML = `${esc(u.source)}<div class="meta">#${id} · ${esc(u.lang)}</div>`;
+  tr.querySelector(".up").onclick = () => send({ t: "fb", val: 1, id });
+  tr.querySelector(".down").onclick = () => send({ t: "fb", val: -1, id });
+  $("rows").prepend(tr);
+  return tr;
+}
+
+function fillRow(u) {
+  const tr = rowFor(u.id, u);
+  const t = u.timing_ms || {};
+  const ms = (label, v) => v === undefined ? "" : ` · ${label} ${v === 0 ? "cached" : v + "ms"}`;
+  tr.querySelector(".src").innerHTML = `${esc(u.source)}<div class="meta">#${u.id} · ${esc(u.lang)}` +
+    `${ms("whisper", t.whisper)}${ms("ml", t.ml)}</div>`;
+  const chips = (u.terms || []).map(x =>
+    `<span class="chip" data-term="${esc(x.term)}" title="Wrong word? Click to try the next option">${esc(x.match)} → ${esc(x.choice)}</span>`).join("");
+  tr.querySelector(".dst").innerHTML = `${esc(u.translation)}<div>${chips}</div>` +
+    `<div class="meta">${esc(u.target)} · ${esc(u.domain)} · ${esc(u.tone)}${u.retry ? ` · retry ${u.retry}` : ""}` +
+    `${ms("gemini", t.gemini)}${ms("tts", t.elevenlabs)} · total ${t.total}ms</div>`;
+  tr.querySelectorAll(".chip").forEach(c => c.onclick = () => send({ t: "fb", val: -1, id: u.id, term: c.dataset.term }));
+  tr.querySelectorAll(".fb button").forEach(b => b.classList.remove("sel"));
+  if (tr === $("rows").firstElementChild) showDomains(u.domain_probs, u.domain);
+}
+
+function showDomains(probs, chosen) {
+  if (!probs) return;
+  $("bars").innerHTML = Object.entries(probs).sort((a, b) => b[1] - a[1]).map(([d, p]) =>
+    `<div class="bar ${d === chosen ? "top" : ""}"><span>${esc(d)}</span>
+      <div class="track"><div class="fill" style="width:${Math.round(p * 100)}%"></div></div>
+      <span>${Math.round(p * 100)}%</span></div>`).join("");
+}
+
+function showMetrics(m) {
+  $("acc").textContent = m.accuracy === null ? "–" : `${Math.round(m.accuracy * 100)}%`;
+  $("accmeta").textContent = m.n ? `${m.n} rated sentences with jargon · line = last ${m.window}` : "No feedback yet";
+  const c = m.curve;
+  if (c.length < 2) { $("curve").innerHTML = ""; return; }
+  const pts = c.map((v, i) => `${(i / (c.length - 1)) * 100},${38 - v * 36}`).join(" ");
+  $("curve").innerHTML = `<polyline points="${pts}" fill="none" stroke="#2ecc71" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+}
+
+function addError(m) {
+  const tr = document.createElement("tr");
+  tr.className = "error";
+  tr.innerHTML = `<td colspan="3">${m.id ? `#${m.id} ` : ""}${esc(m.msg)}</td>`;
+  $("rows").prepend(tr);
+}
+
+function markFeedback(id, val) {
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  if (!tr) return;
+  tr.querySelector(".up").classList.toggle("sel", val === 1);
+  tr.querySelector(".down").classList.toggle("sel", val === -1);
+}
+
+$("listen").onclick = () => send({ t: "mode", state: status.listening ? "stop" : "listen" });
+$("lang").onchange = e => send({ t: "lang", value: e.target.value });
+$("domain").onchange = e => send({ t: "mode", domain: e.target.value });
+$("reset").onclick = () => { if (confirm("Forget everything learned from thumbs up/down?")) send({ t: "reset" }); };
+$("save").onclick = () => {
+  send({ t: "context", name: $("ctxname").value.trim() || "default", text: $("ctx").value });
+  $("saved").textContent = "Saved ✓";
+};
+$("packs").onchange = e => {
+  const p = packs[e.target.value];
+  if (!p) return;
+  $("ctxname").value = p.name;
+  $("ctx").value = p.text;
+  send({ t: "context", name: p.name, text: p.text });  // make it the active pack
+};
+
+connect();
+</script>
+</body>
+</html>

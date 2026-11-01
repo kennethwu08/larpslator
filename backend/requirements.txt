@@ -1,9 +1,14 @@
+# server + pipeline
 fastapi
 uvicorn[standard]
-websockets
 python-dotenv
 openai
+google-genai
 elevenlabs
+webrtcvad-wheels   # prebuilt webrtcvad (the original package doesn't build on new Pythons)
+numpy
+
+# machine learning (Role C)
 sentence-transformers
 scikit-learn
 wordfreq
