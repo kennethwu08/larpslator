@@ -45,6 +45,7 @@
     renderVoice(m.voice || {}, m.voice_recording);
     renderBadges(m.badges || []);
     renderNotes(m, first);
+    renderSetup(m);
   });
 
   $("listen").onclick = () => { if (status) larp.setListening(!status.listening); };
@@ -69,7 +70,7 @@
 
   // ---------------------------------------------------------------- badge (AirPods-style page)
   const wifi = rssi => rssi == null ? "—" : rssi > -60 ? "Excellent" : rssi > -72 ? "Good" : "Weak";
-  larp.on("badges", m => { if (status) { status.badges = m.badges; renderBadges(m.badges || []); } });
+  larp.on("badges", m => { if (status) { status.badges = m.badges; renderBadges(m.badges || []); renderSetup(status); } });
 
   function renderBadges(badges) {
     const active = badges.find(b => b.active);
@@ -232,6 +233,7 @@
     if (cards.has(key)) return cards.get(key);
     const el = document.createElement("article");
     el.className = "utt";
+    el.dataset.id = key;
     $("empty")?.remove();
     $("utterances").prepend(el);
     cards.set(key, el);
@@ -258,11 +260,13 @@
   larp.on("transcript", m => {
     const el = card(m.id);
     el.classList.add("pending");
-    el.innerHTML = `<div class="lang">${esc(cap(m.lang))}</div><div class="said">${esc(m.source)}</div><div class="heard">Translating…</div>`;
+    el.innerHTML = `<div class="lang">${esc(cap(m.lang))}</div><div class="said">${esc(m.source)}</div>
+      <div class="heard" aria-hidden="true">…</div><div class="stage-line" role="status">Heard. Translating and speaking…</div>`;
   });
 
   larp.on("utterance", u => {
     const el = card(u.id), terms = u.terms || [], t = u.timing_ms || {};
+    const wasOpen = el.querySelector(".how")?.open;
     el.classList.remove("pending");
     const total = t.total ? (t.total / 1000).toFixed(1) + " s" : "cached";
     const larpLine = u.larp && u.larp.text !== u.source ? `<div class="larp"><b>LARP</b> ${esc(u.larp.text)}</div>` : "";
@@ -277,7 +281,8 @@
         <span class="meta">${esc(LABELS[u.domain] || u.domain)} · ${total}${u.retry ? " · updated" : ""}</span>
         <button class="fb up" aria-label="Good translation">${icon("up")}</button>
         <button class="fb down" aria-label="Wrong translation, try another">${icon("down")}</button>
-      </div>`;
+      </div>
+      <details class="how"${wasOpen ? " open" : ""}><summary>How it was translated ${icon("chevron")}</summary>${how(u)}</details>`;
     el.querySelector(".up").onclick = () => larp.feedback(u.id, 1);
     el.querySelector(".down").onclick = () => larp.feedback(u.id, -1);
     el.querySelectorAll(".chip").forEach(c => { c.onclick = () => larp.feedback(u.id, -1, c.dataset.term); });
@@ -299,8 +304,96 @@
     while ($("errors").children.length > 2) $("errors").lastElementChild.remove();
     setTimeout(() => div.remove(), 12000);
     const el = cards.get(String(m.id));
-    if (el?.classList.contains("pending")) el.querySelector(".heard").textContent = "Couldn't translate this one.";
+    if (el?.classList.contains("pending")) {
+      el.classList.remove("pending");
+      el.querySelector(".heard").textContent = "Couldn't translate this one.";
+      el.querySelector(".stage-line")?.remove();
+    }
     if (String(m.msg).startsWith("voice setup")) { $("rec-progress").textContent = m.msg; setRecording(false); }
+  });
+
+  // What the backend did for one sentence: stage timings, field, jargon, notes, LARP edits.
+  const STAGES = [["whisper", "Speech to text"], ["ml", "Field and jargon (on this laptop)"], ["llm", "Translation (LLM)"], ["elevenlabs", "Voice"]];
+  function how(u) {
+    const t = u.timing_ms || {};
+    const parts = STAGES.filter(([k]) => k in t);
+    const sum = parts.reduce((a, [k]) => a + (t[k] || 0), 0) || 1;
+    const bar = parts.map(([k]) => `<span class="s-${k}" style="width:${((t[k] || 0) / sum * 100).toFixed(1)}%"></span>`).join("");
+    const legend = parts.map(([k, label]) =>
+      `<i class="s-${k}"></i><span>${label}</span><span class="ms">${t[k] === 0 ? "cached" : Math.round(t[k]) + " ms"}</span>`).join("");
+    const pct = Math.round((u.domain_probs || {})[u.domain] * 100);
+    const rows = [["Field", `${esc(LABELS[u.domain] || u.domain)}${Number.isFinite(pct) ? ` (${pct}% sure)` : ""}`],
+                  ["Tone", esc(cap(u.tone || "neutral"))]];
+    if ((u.terms || []).length) rows.push(["Jargon", u.terms.map(x => `${esc(x.match)} → <b>${esc(x.choice)}</b>` +
+      (x.options.length > 1 ? ` <span class="alt">(also: ${x.options.filter(o => o !== x.choice).map(esc).join(", ")})</span>` : "")).join("<br>")]);
+    if ((u.context_lines || []).length) rows.push(["Notes used", u.context_lines.map(esc).join("<br>")]);
+    if (u.larp?.changes?.length) rows.push(["LARP edits", u.larp.changes.map(c => c.to ? `<del>${esc(c.from)}</del> → ${esc(c.to)}` : `<del>${esc(c.from)}</del>`).join(", ")]);
+    if (u.retry) rows.push(["Updated", `After your feedback (take ${u.retry + 1})`]);
+    return `<div class="how-body">
+      ${parts.length ? `<div class="timeline">${bar}</div><div class="legend">${legend}</div>` : ""}
+      <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>`;
+  }
+
+  // ---------------------------------------------------------------- setup checklist
+  function renderSetup(m) {
+    const badges = m.badges || [], badge = badges.find(b => b.active), voice = m.voice?.ready;
+    $("setup").hidden = !!(badge && voice);
+    $("step-badge").className = "step" + (badge ? " done" : "");
+    $("step-voice").className = "step" + (voice ? " done" : "");
+    $("setup-badge-value").textContent = badge ? badge.name || badge.id : badges.length ? `${badges.length} available` : "None found";
+    $("setup-voice-value").textContent = voice ? m.voice.name || "Done" : "";
+  }
+  $("setup-badge").onclick = () => {
+    const badges = status?.badges || [];
+    if (badges.find(b => b.active)) return;
+    if (badges.length === 1) { larp.connectBadge(badges[0].id); toast("Connecting…"); return; }
+    showView("settings");
+    ($("available-wrap").hidden ? $("badge-help") : $("available-wrap")).scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  $("setup-voice").onclick = () => $("voice-open").click();
+
+  // ---------------------------------------------------------------- views: mobile tabs, presentation mode
+  function showView(view) {
+    document.body.dataset.view = view;
+    $("tab-feed").setAttribute("aria-selected", String(view === "feed"));
+    $("tab-settings").setAttribute("aria-selected", String(view === "settings"));
+  }
+  showView("feed");
+  $("tab-feed").onclick = () => showView("feed");
+  $("tab-settings").onclick = () => showView("settings");
+
+  function togglePresent(on = !document.body.classList.contains("present")) {
+    document.body.classList.toggle("present", on);
+    $("present").setAttribute("aria-pressed", String(on));
+    $("present").innerHTML = icon(on ? "shrink" : "expand");
+    if (on) { showView("feed"); window.scrollTo({ top: 0 }); }
+  }
+  $("present").onclick = () => togglePresent();
+
+  // ---------------------------------------------------------------- keyboard shortcuts
+  $("shortcuts-open").onclick = () => $("shortcuts-sheet").showModal();
+  $("shortcuts-close").onclick = () => $("shortcuts-sheet").close();
+  function toggleContextById(id) {
+    const c = (status?.contexts || []).find(x => x.id === id);
+    if (!c) return;
+    larp.toggleContext(id, !c.on);
+    toast(`${c.label} ${c.on ? "off" : "on"}`);
+  }
+  document.addEventListener("keydown", e => {
+    if (e.metaKey || e.ctrlKey || e.altKey || !status) return;
+    const el = e.target;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable) return;
+    if (e.key === "Escape" && document.body.classList.contains("present")) { togglePresent(false); return; }
+    if (document.querySelector("dialog[open]")) return;
+    const latest = $("utterances").querySelector(".utt:not(.pending)")?.dataset.id;
+    const fields = (status.contexts || []).filter(c => c.kind === "field");
+    if (e.key === " " && el.tagName !== "BUTTON" && el.tagName !== "SUMMARY") { e.preventDefault(); $("listen").click(); }
+    else if (e.key === "l" || e.key === "L") toggleContextById("larp");
+    else if (/^[1-9]$/.test(e.key) && fields[e.key - 1]) toggleContextById(fields[e.key - 1].id);
+    else if (e.key === "p" || e.key === "P") togglePresent();
+    else if (e.key === "?") $("shortcuts-sheet").showModal();
+    else if (e.key === "ArrowUp" && latest) { e.preventDefault(); larp.feedback(Number(latest) || latest, 1); }
+    else if (e.key === "ArrowDown" && latest) { e.preventDefault(); larp.feedback(Number(latest) || latest, -1); }
   });
 
   // ---------------------------------------------------------------- insights
@@ -334,6 +427,7 @@
     $("accuracy").textContent = m.accuracy == null ? "No ratings" : Math.round(m.accuracy * 100) + "%";
     $("accuracy").classList.toggle("secondary", m.accuracy == null);
     $("accuracy-meta").textContent = m.n ? `${m.n} rating${m.n === 1 ? "" : "s"}. Line shows the last ${m.window}.` : "From your thumbs up and down.";
+    $("curve").parentElement.hidden = (m.curve || []).length < 2;  // a line needs two points
     if (chart) { chart.data.labels = (m.curve || []).map((_, i) => i); chart.data.datasets[0].data = m.curve || []; chart.update(); }
   });
   $("reset").onclick = () => { if (confirm("Forget what was learned from your feedback?")) { larp.resetLearning(); toast("Learning reset"); } };

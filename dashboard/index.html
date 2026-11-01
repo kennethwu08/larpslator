@@ -20,16 +20,27 @@
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M17 14V3M22 12V5a2 2 0 0 0-2-2H7.6a2 2 0 0 0-2 1.6l-1.5 7A2 2 0 0 0 6 14h5v5a2 2 0 0 0 2 2l4-7"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+  <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
 </svg>
 
 <header class="topbar">
   <div class="brand">Larpslator</div>
   <div class="conn" role="status"><span class="dot" id="conn-dot"></span><span id="conn-text">Connecting…</span></div>
   <span id="pill-mock" class="tag" hidden>Demo data</span>
+  <button id="shortcuts-open" class="icon-button hide-mobile" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"><svg class="icon"><use href="#i-keyboard"/></svg></button>
+  <button id="present" class="icon-button" aria-label="Presentation mode" aria-pressed="false" title="Presentation mode (P)"><svg class="icon"><use href="#i-expand"/></svg></button>
   <button id="listen" class="listen" disabled aria-pressed="false">
     <svg class="icon"><use href="#i-mic"/></svg><span id="listen-label">Start Listening</span>
   </button>
 </header>
+
+<div class="segmented" role="tablist" aria-label="View">
+  <button role="tab" id="tab-feed" aria-selected="true">Conversation</button>
+  <button role="tab" id="tab-settings" aria-selected="false">Settings</button>
+</div>
 
 <div class="layout">
   <!-- Left: the badge page, laid out like iOS Settings -->
@@ -109,6 +120,10 @@
       <h2 id="feed-title">Conversation</h2>
       <span class="secondary" id="feed-state">Paused</span>
     </div>
+    <div class="group setup" id="setup" hidden>
+      <button class="row link" id="setup-badge"><span class="step" id="step-badge"></span><span>Connect your badge</span><span class="value" id="setup-badge-value"></span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
+      <button class="row link" id="setup-voice"><span class="step" id="step-voice"></span><span>Set up your voice</span><span class="value" id="setup-voice-value"></span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
+    </div>
     <div id="errors" role="alert"></div>
     <div id="utterances" aria-live="polite">
       <div class="empty" id="empty">
@@ -165,6 +180,19 @@
   <label class="sr-only" for="notes">Notes</label>
   <textarea id="notes" placeholder="One per line: names, terms, agenda"></textarea>
   <div class="sheet-actions"><button id="notes-save" class="button primary">Save</button></div>
+</dialog>
+
+<dialog id="shortcuts-sheet" class="sheet" aria-labelledby="shortcuts-title">
+  <div class="sheet-head"><h2 id="shortcuts-title">Keyboard Shortcuts</h2><button class="close" id="shortcuts-close" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button></div>
+  <div class="group">
+    <div class="row"><span>Start or stop listening</span><kbd>Space</kbd></div>
+    <div class="row"><span>LARP mode on or off</span><kbd>L</kbd></div>
+    <div class="row"><span>Turn a context on or off</span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></div>
+    <div class="row"><span>Presentation mode</span><kbd>P</kbd></div>
+    <div class="row"><span>Good / wrong translation (latest)</span><kbd>↑</kbd><kbd>↓</kbd></div>
+    <div class="row"><span>Show shortcuts</span><kbd>?</kbd></div>
+    <div class="row"><span>Close a sheet</span><kbd>Esc</kbd></div>
+  </div>
 </dialog>
 
 <div id="toast" class="toast" role="status" hidden></div>

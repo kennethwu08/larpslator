@@ -24,6 +24,10 @@ Conversation in the middle, translation details on the right. Light and dark mod
 - Grouped rows, switches for on/off, sheets (`<dialog>`) for longer flows (voice setup, notes).
 - Accessibility: visible focus rings, labels on icon buttons, status not by color alone, `prefers-reduced-motion`.
 
+Features: setup checklist (badge, voice) above the conversation; "How it was translated" under each sentence
+(stage timings, field, jargon and alternatives, notes used, LARP edits); presentation mode for the projector (`P`);
+keyboard shortcuts (`?` lists them: Space listen, L LARP, 1-4 contexts, ↑/↓ feedback); Conversation/Settings tabs on phones.
+
 ## Files
 
 ```
