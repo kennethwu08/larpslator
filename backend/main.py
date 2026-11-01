@@ -1,7 +1,8 @@
 """Larpslator backend: badge audio -> VAD -> Whisper -> local ML -> Gemini -> ElevenLabs -> badge.
 
-Gemini only translates. Domain, tone, jargon choice, context trimming and learning
-from feedback all run locally (ml.py), so they cost nothing.
+Gemini only translates (and, in LARP mode, polishes in the same call). Field detection,
+tone, jargon choice, context trimming, LARP phrase upgrades and learning from feedback
+all run locally (ml.py), so they cost nothing.
 
 Run:  uvicorn main:app --host 0.0.0.0 --port 8000   (from the backend/ folder)
 """
@@ -52,7 +53,6 @@ VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID") or "JBFqnCBsd6RMkjVDRZzb"  # premade
 DEFAULT_TARGET = os.getenv("TARGET_LANGUAGE") or "Korean"
 
 LANGUAGES = ["Korean", "Spanish", "French", "Mandarin Chinese", "Japanese", "German", "English"]
-DOMAIN_MODES = ["auto", "academia", "cs", "med", "general"]
 # Lower stability = more expressive; higher style = more exaggerated delivery.
 TONE_SETTINGS = {
     "neutral":  {"stability": 0.50, "style": 0.00},
@@ -60,6 +60,7 @@ TONE_SETTINGS = {
     "calm":     {"stability": 0.75, "style": 0.00},
     "serious":  {"stability": 0.65, "style": 0.20},
     "question": {"stability": 0.40, "style": 0.30},
+    "confident": {"stability": 0.45, "style": 0.45},  # LARP mode
 }
 
 CONTEXT_DIR = HERE / "contexts"
@@ -76,7 +77,7 @@ openai_client = OpenAI()  # reads OPENAI_API_KEY
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-from ml import LocalML  # noqa: E402  (slow import: loads torch)
+from ml import FIELDS, STYLES, LocalML  # noqa: E402  (slow import: loads torch)
 ML = LocalML()
 
 
@@ -172,9 +173,14 @@ except (OSError, json.JSONDecodeError):
     _translation_cache = {}
 
 
-def translate(text: str, target: str, terms: list[dict], context_lines: list[str]) -> tuple[str, bool]:
-    """The only Gemini call: a short plain-text translation request. Returns (translation, cached)."""
+def translate(text: str, target: str, terms: list[dict], context_lines: list[str],
+              style: str = "") -> tuple[str, bool]:
+    """The only Gemini call: a short plain-text translation request. Returns (translation, cached).
+
+    `style` is the LARP instruction; it rides along in the same request, no extra call."""
     lines = [f"Translate into {target}. Reply with the translation only."]
+    if style:
+        lines.append(style)
     if terms:
         lines.append("Use these term translations: " + "; ".join(f"{t['match']} = {t['choice']}" for t in terms))
     if context_lines:
@@ -222,10 +228,13 @@ def synthesize(text: str, tone: str) -> tuple[bytes, bool]:
 def translate_and_speak(r: dict, timing: dict):
     """Gemini + ElevenLabs for an analyzed sentence. Fills r["translation"] and r["audio"]."""
     t = time.perf_counter()
-    if same_language(r["lang"], r["target"]):
+    larp = r.get("larp")
+    if not larp and same_language(r["lang"], r["target"]):
         r["translation"], cached = r["source"], True   # nothing to translate: no Gemini call
     else:
-        r["translation"], cached = translate(r["source"], r["target"], r["terms"], r["context_lines"])
+        text = larp["text"] if larp else r["source"]   # LARP: send the locally upgraded wording
+        style = ML.larp_instruction(r["domain"]) if larp else ""
+        r["translation"], cached = translate(text, r["target"], r["terms"], r["context_lines"], style)
     timing["gemini"] = 0 if cached else round((time.perf_counter() - t) * 1000)
 
     t = time.perf_counter()
@@ -235,16 +244,18 @@ def translate_and_speak(r: dict, timing: dict):
 
 
 def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
-                 domain_mode: str = "auto", on_transcript=None) -> dict:
+                 active: set[str] | None = None, on_transcript=None) -> dict:
     """Runs one sentence through every stage. Raises on API errors; callers decide to skip.
 
+    `active` is the set of checked contexts (fields and "larp"); default: all fields, no LARP.
     Returns {"source", "lang", "target", "domain", "domain_probs", "tone", "terms",
-             "context_lines", "translation", "audio", "timing_ms"}. Cached stages report 0 ms.
+             "context_lines", "larp", "translation", "audio", "timing_ms"}. Cached stages report 0 ms.
     """
+    active = set(FIELDS) if active is None else active
     timing = {"vad": round(vad_s * 1000, 1)}
 
     t = time.perf_counter()
-    source, lang = transcribe(pcm, ML.whisper_prompt(domain_mode))
+    source, lang = transcribe(pcm, ML.whisper_prompt(active))
     timing["whisper"] = round((time.perf_counter() - t) * 1000)
     r = {"source": source, "lang": lang, "target": target, "translation": "", "audio": b"", "timing_ms": timing}
     if not source:
@@ -253,7 +264,7 @@ def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
         on_transcript(source, lang)
 
     t = time.perf_counter()
-    r.update(ML.analyze(source, target, context, domain_mode))
+    r.update(ML.analyze(source, target, context, active))
     timing["ml"] = round((time.perf_counter() - t) * 1000)
 
     translate_and_speak(r, timing)
@@ -296,7 +307,7 @@ class State:
         packs = list_contexts()
         self.listening = False
         self.target = DEFAULT_TARGET
-        self.domain_mode = "auto"
+        self.active = set(FIELDS)     # checked contexts: fields to choose between, plus "larp"
         self.context_name = packs[0]["name"] if packs else ""
         self.context = packs[0]["text"] if packs else ""   # reuse the most recent pack on restart
         self.badge: WebSocket | None = None
@@ -308,11 +319,19 @@ class State:
         self.utterances: dict[int, dict] = {}
         self.last_id: int | None = None
 
+    def badge_mode(self) -> str:
+        fields = [d for d in FIELDS if d in self.active]
+        return fields[0] if len(fields) == 1 else "auto"
+
     def status(self) -> dict:
+        contexts = [{"id": k, "label": v, "kind": "field", "on": k in self.active, "source": ML.source[k]}
+                    for k, v in FIELDS.items()]
+        contexts += [{"id": k, "label": v, "kind": "style", "on": k in self.active, "source": ML.source[k]}
+                     for k, v in STYLES.items()]
         return {"t": "status", "listening": self.listening, "target": self.target,
-                "domain_mode": self.domain_mode, "badge": self.badge is not None,
+                "contexts": contexts, "badge": self.badge is not None,
                 "context_name": self.context_name, "context": self.context,
-                "languages": LANGUAGES, "domain_modes": DOMAIN_MODES, "packs": list_contexts()}
+                "languages": LANGUAGES, "packs": list_contexts()}
 
 
 state = State()
@@ -362,9 +381,10 @@ def public(utt: dict) -> dict:
 def log_timing(uid: int, r: dict):
     tm = r["timing_ms"]
     log.info("utt %d | vad %.1fms | whisper %sms | ml %sms | gemini %sms | elevenlabs %sms | total %sms | "
-             "%s/%s | %r -> %r | terms %s",
+             "%s/%s | %r%s -> %r | terms %s",
              uid, tm.get("vad", 0), tm.get("whisper", "-"), tm.get("ml", "-"), tm["gemini"], tm["elevenlabs"],
-             tm["total"], r["domain"], r["tone"], r["source"], r["translation"],
+             tm["total"], r["domain"], r["tone"], r["source"],
+             f" =larp=> {r['larp']['text']!r}" if r.get("larp") else "", r["translation"],
              {t["match"]: t["choice"] for t in r["terms"]} or "-")
 
 
@@ -378,7 +398,7 @@ async def process_sentence(pcm: bytes, vad_s: float):
             broadcast({"t": "transcript", "id": uid, "source": source, "lang": lang}), loop)
 
     r = await asyncio.to_thread(run_pipeline, pcm, state.target, state.context, vad_s,
-                                state.domain_mode, on_transcript)
+                                set(state.active), on_transcript)
     if not r["source"]:
         log.info("utterance %d: empty transcript, skipped", uid)
         return
@@ -427,10 +447,9 @@ async def worker():
 
 
 # ---------------------------------------------------------------- control messages
-async def set_domain_mode(mode: str):
-    state.domain_mode = mode
+async def tell_badge_mode():
     if state.badge:
-        await state.badge.send_json({"t": "mode", "domain": mode})
+        await state.badge.send_json({"t": "mode", "domain": state.badge_mode()})
 
 
 async def handle_control(msg: dict):
@@ -439,8 +458,14 @@ async def handle_control(msg: dict):
     if t == "mode" and msg.get("state") in ("listen", "stop"):
         state.listening = msg["state"] == "listen"
         state.segmenter.reset()
-    elif t == "mode" and msg.get("domain") in DOMAIN_MODES:
-        await set_domain_mode(msg["domain"])
+    elif t == "toggle" and msg.get("id") in {**FIELDS, **STYLES}:  # a context checkbox
+        state.active = (state.active | {msg["id"]}) if msg.get("on") else (state.active - {msg["id"]})
+        await tell_badge_mode()
+    elif t == "mode" and (msg.get("domain") == "auto" or msg.get("domain") in FIELDS):
+        # Badge BOOT button: "auto" checks every field, a field name checks only that one. LARP is kept.
+        fields = set(FIELDS) if msg["domain"] == "auto" else {msg["domain"]}
+        state.active = fields | (state.active & set(STYLES))
+        await tell_badge_mode()
     elif t == "ptt":  # push-to-talk from the badge: release ends the sentence immediately
         if msg.get("state") == "start":
             state.listening = True
@@ -478,8 +503,7 @@ async def handle_control(msg: dict):
         await broadcast(ML.metrics())
     elif t == "hello":
         log.info("badge says hello")
-        if state.badge:
-            await state.badge.send_json({"t": "mode", "domain": state.domain_mode})
+        await tell_badge_mode()
         return
     else:
         log.warning("ignored message: %s", msg)
@@ -516,7 +540,7 @@ async def badge_ws(ws: WebSocket):
     state.badge = ws
     state.segmenter.reset()
     log.info("badge connected")
-    await ws.send_json({"t": "mode", "domain": state.domain_mode})
+    await ws.send_json({"t": "mode", "domain": state.badge_mode()})
     await broadcast(state.status())
 
     async def on_audio(pcm: bytes):

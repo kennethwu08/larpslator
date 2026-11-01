@@ -45,15 +45,18 @@ def main_cli():
     ap.add_argument("--lang", default=main.DEFAULT_TARGET, help="target language (default: %(default)s)")
     ap.add_argument("--context", default="", help="meeting context text")
     ap.add_argument("--context-file", help="saved context pack JSON")
+    ap.add_argument("--contexts", default=",".join(main.FIELDS),
+                    help="checked contexts, comma-separated: %s, larp (default: all fields)" % ", ".join(main.FIELDS))
     args = ap.parse_args()
 
     context = args.context
     if args.context_file:
         context = json.loads(Path(args.context_file).read_text())["text"]
 
+    active = {c.strip() for c in args.contexts.split(",") if c.strip()}
     pcm = load_wav_16k_mono(args.wav)
     print(f"\nInput: {args.wav}, {len(pcm) / 2 / main.SAMPLE_RATE:.1f}s · target: {args.lang} · "
-          f"context: {len(context)} chars\n")
+          f"context: {len(context)} chars · checked: {', '.join(sorted(active))}\n")
 
     # VAD: feed in 100 ms chunks like the badge would, then flush the tail.
     seg = main.Segmenter()
@@ -71,7 +74,7 @@ def main_cli():
     for n, (sentence_pcm, vad_s) in enumerate(sentences, 1):
         print(f"Sentence {n} ({len(sentence_pcm) / 2 / main.SAMPLE_RATE:.1f}s of audio)")
         try:
-            r = main.run_pipeline(sentence_pcm, args.lang, context, vad_s)
+            r = main.run_pipeline(sentence_pcm, args.lang, context, vad_s, active)
         except Exception as e:
             print(f"  FAILED: {type(e).__name__}: {e}  (skipping, like the server does)\n")
             continue
@@ -86,6 +89,8 @@ def main_cli():
         stage("ml (local)", f"{tm['ml']}ms  domain={r['domain']} ({probs})  tone={r['tone']}")
         stage("", f"terms: {', '.join(t['match'] + ' -> ' + t['choice'] for t in r['terms']) or '-'}")
         stage("", f"context sent: {r['context_lines'] or '-'}")
+        if r["larp"]:
+            stage("larp (local)", f"{r['larp']['text']!r}  changes: {r['larp']['changes'] or '-'}")
         stage("gemini", f"{ms(tm['gemini'])}  {r['translation']!r}")
         out = f"out_{n}.wav"
         Path(out).write_bytes(main.pcm_to_wav(r["audio"]))

@@ -44,6 +44,12 @@
   .fb button.up.sel { background:var(--good); color:#000; }
   .fb button.down.sel { background:var(--bad); }
   tr.error td { color:var(--bad); font-size:14px; }
+  .ctx { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; }
+  .ctx input { width:18px; height:18px; margin:0; accent-color:var(--accent); }
+  .ctx .src { margin-left:auto; font-size:12px; color:var(--dim); }
+  .ctx.style { border-top:1px solid var(--line); margin-top:4px; padding-top:10px; }
+  .larp { color:var(--dim); text-decoration:line-through; font-size:15px; }
+  .larp-on { font-size:12px; font-weight:600; color:#f5b041; }
   #log { max-height: calc(100vh - 100px); overflow-y:auto; }
 </style>
 </head>
@@ -52,12 +58,16 @@
   <h1>Larpslator</h1>
   <button id="listen" class="off">Listen</button>
   <label>Translate to <select id="lang"></select></label>
-  <label>Field <select id="domain"></select></label>
   <span id="badge" class="pill">badge: offline</span>
   <span id="conn" class="pill">server: connecting…</span>
 </header>
 <main>
   <aside>
+    <section>
+      <h2>Contexts</h2>
+      <div id="contexts"></div>
+      <div class="meta">Checked fields are the only ones the backend can detect. One checked = always that field.</div>
+    </section>
     <section>
       <h2>Detected field</h2>
       <div id="bars"><div class="meta">Waiting for the first sentence…</div></div>
@@ -124,7 +134,11 @@ function applyStatus(m) {
   $("badge").textContent = m.badge ? "badge: connected" : "badge: offline";
   $("badge").classList.toggle("on", m.badge);
   fillSelect($("lang"), m.languages, m.target);
-  fillSelect($("domain"), m.domain_modes, m.domain_mode);
+  $("contexts").innerHTML = m.contexts.map(c => `
+    <label class="ctx ${c.kind}"><input type="checkbox" data-id="${esc(c.id)}" ${c.on ? "checked" : ""}>
+      ${esc(c.label)}<span class="src" title="where this context's glossary/phrases come from">${esc(c.source)}</span></label>`).join("");
+  $("contexts").querySelectorAll("input").forEach(cb =>
+    cb.onchange = () => send({ t: "toggle", id: cb.dataset.id, on: cb.checked }));
 
   packs = m.packs;
   $("packs").innerHTML = `<option value="">Load a saved pack…</option>` +
@@ -152,7 +166,10 @@ function fillRow(u) {
   const tr = rowFor(u.id, u);
   const t = u.timing_ms || {};
   const ms = (label, v) => v === undefined ? "" : ` · ${label} ${v === 0 ? "cached" : v + "ms"}`;
-  tr.querySelector(".src").innerHTML = `${esc(u.source)}<div class="meta">#${u.id} · ${esc(u.lang)}` +
+  const said = u.larp && u.larp.text !== u.source
+    ? `<div class="larp">${esc(u.source)}</div>${esc(u.larp.text)} <span class="larp-on">LARP</span>`
+    : `${esc(u.source)}${u.larp ? ' <span class="larp-on">LARP</span>' : ""}`;
+  tr.querySelector(".src").innerHTML = `${said}<div class="meta">#${u.id} · ${esc(u.lang)}` +
     `${ms("whisper", t.whisper)}${ms("ml", t.ml)}</div>`;
   const chips = (u.terms || []).map(x =>
     `<span class="chip" data-term="${esc(x.term)}" title="Wrong word? Click to try the next option">${esc(x.match)} → ${esc(x.choice)}</span>`).join("");
@@ -197,7 +214,6 @@ function markFeedback(id, val) {
 
 $("listen").onclick = () => send({ t: "mode", state: status.listening ? "stop" : "listen" });
 $("lang").onchange = e => send({ t: "lang", value: e.target.value });
-$("domain").onchange = e => send({ t: "mode", domain: e.target.value });
 $("reset").onclick = () => { if (confirm("Forget everything learned from thumbs up/down?")) send({ t: "reset" }); };
 $("save").onclick = () => {
   send({ t: "context", name: $("ctxname").value.trim() || "default", text: $("ctx").value });

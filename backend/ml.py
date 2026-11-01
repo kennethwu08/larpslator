@@ -1,10 +1,12 @@
 """Local, free ML: everything except the actual translation runs on the laptop.
 
-- domain:  sentence embedding (all-MiniLM-L6-v2) -> LogisticRegression, smoothed over the conversation
+- field:   sentence embedding (all-MiniLM-L6-v2) -> LogisticRegression, limited to the checked
+           contexts and smoothed over the conversation
 - tone:    punctuation rules, then nearest tone prototype by embedding
-- terms:   glossary lookup for the detected domain
+- terms:   glossary lookup for the detected field
 - choice:  which translation to use per term, learned from thumbs up/down (Beta posterior per option)
 - context: only the context-pack lines relevant to this sentence go to Gemini
+- larp:    drops filler words and upgrades weak phrases before translation
 """
 import json
 import logging
@@ -20,8 +22,14 @@ HERE = Path(__file__).parent
 DATA = HERE.parent / "data"            # owned by Role D; read-only here
 STATE_FILE = HERE / "state" / "term_stats.json"
 EMBED_MODEL = "all-MiniLM-L6-v2"
-DOMAINS = ["academia", "cs", "med", "general"]
-SMOOTHING = 0.5                        # weight of the previous sentences in the domain estimate
+
+# The contexts shown as checkboxes. Fields are subjects with jargon; LARP is a speaking style.
+FIELDS = {"pickleball": "Pickleball", "tennis": "Tennis", "cs": "Computer science", "math": "Math"}
+STYLES = {"larp": "LARP mode"}
+GENERAL = "general"                    # fallback class for everyday sentences; not a checkbox
+DOMAINS = [*FIELDS, GENERAL]
+
+SMOOTHING = 0.5                        # weight of the previous sentences in the field estimate
 TONE_MIN_SIM = 0.35                    # below this, tone stays neutral
 CONTEXT_FULL_CHARS = 400               # context packs shorter than this are sent whole
 CONTEXT_MAX_LINES = 5
@@ -36,21 +44,32 @@ def _norm_options(value, target: str) -> list[str]:
     return value.get(target, []) if isinstance(value, dict) else []
 
 
+def _read_json(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("skipping %s: %s", path, e)
+        return None
+
+
 class LocalML:
     def __init__(self):
         seeds = json.loads((HERE / "seeds.json").read_text())
-        self.glossary: dict[str, dict] = {d: dict(seeds["glossary"].get(d, {})) for d in DOMAINS}
-        texts = [(t, d) for d, ts in seeds["domains"].items() for t in ts]
-        self._load_data_folder(texts)
+        self.source = {}                                  # context -> "data" or "built-in"
+        self.glossary, sentences = self._load(seeds)
+        self.larp = self._load_larp(seeds)
 
         log.info("loading %s (first run downloads ~90 MB)", EMBED_MODEL)
         # CPU on purpose: the Apple GPU (MPS) backend crashes on macOS 14, and MiniLM takes ~15 ms on CPU anyway.
         self.model = SentenceTransformer(EMBED_MODEL, device="cpu")
 
-        # Domain classifier. Glossary terms count as short training examples too.
+        # Field classifier over all fields; unchecked ones are masked out at prediction time.
+        # Glossary terms count as short training examples too.
+        texts = [(t, d) for d in DOMAINS for t in sentences[d]]
         texts += [(term, d) for d in DOMAINS for term in self.glossary[d]]
         self.clf = LogisticRegression(max_iter=2000, C=4.0)
         self.clf.fit(self.embed([t for t, _ in texts]), [d for _, d in texts])
+        self.classes = [str(c) for c in self.clf.classes_]
         self.domain_ema: np.ndarray | None = None
 
         self.tone_names = list(seeds["tones"])
@@ -61,59 +80,110 @@ class LocalML:
         self.lock = threading.Lock()
         self.stats = {"terms": {}, "history": []}
         if STATE_FILE.exists():
-            self.stats = json.loads(STATE_FILE.read_text())
-        log.info("ML ready: %d training sentences, %d glossary terms",
-                 len(texts), sum(len(g) for g in self.glossary.values()))
+            self.stats = _read_json(STATE_FILE) or self.stats
+        log.info("ML ready: %d training examples, %d glossary terms, sources %s",
+                 len(texts), sum(len(g) for g in self.glossary.values()), self.source)
 
-    def _load_data_folder(self, texts: list):
-        for d in DOMAINS:
-            p = DATA / "glossaries" / f"{d}.json"
-            if p.exists():
-                try:
-                    self.glossary[d].update(json.loads(p.read_text()))
-                    log.info("glossary: loaded %s", p.relative_to(HERE.parent))
-                except (OSError, json.JSONDecodeError) as e:
-                    log.warning("glossary: skipping %s: %s", p.name, e)
-        p = DATA / "train.jsonl"
-        if p.exists():
-            for line in p.read_text().splitlines():
+    def _load(self, seeds: dict) -> tuple[dict, dict]:
+        """data/ wins per context; the built-in seeds fill in whatever data/ doesn't have yet."""
+        rows = []
+        if (DATA / "train.jsonl").exists():
+            for line in (DATA / "train.jsonl").read_text().splitlines():
                 try:
                     row = json.loads(line)
-                    if row.get("domain") in DOMAINS and row.get("text"):
-                        texts.append((row["text"], row["domain"]))
                 except json.JSONDecodeError:
                     continue
+                if row.get("domain") in DOMAINS and row.get("text"):
+                    rows.append((row["text"], row["domain"]))
+
+        glossary, sentences = {}, {}
+        for d in DOMAINS:
+            from_data = _read_json(DATA / "glossaries" / f"{d}.json") if (DATA / "glossaries" / f"{d}.json").exists() else None
+            glossary[d] = from_data if isinstance(from_data, dict) else dict(seeds["glossary"].get(d, {}))
+            sentences[d] = [t for t, dd in rows if dd == d] or seeds["domains"].get(d, [])
+            if d in FIELDS:
+                self.source[d] = "data" if from_data is not None or any(dd == d for _, dd in rows) else "built-in"
+        return glossary, sentences
+
+    def _load_larp(self, seeds: dict) -> dict:
+        larp = _read_json(DATA / "larp.json") if (DATA / "larp.json").exists() else None
+        self.source["larp"] = "data" if isinstance(larp, dict) else "built-in"
+        larp = {**seeds["larp"], **(larp if isinstance(larp, dict) else {})}
+        # Longest phrases first so "pretty good" is upgraded before "good".
+        larp["_upgrades"] = [(re.compile(rf"\b{re.escape(k)}\b", re.IGNORECASE), v)
+                             for k, v in sorted(larp["upgrades"].items(), key=lambda kv: -len(kv[0]))]
+        # A filler written with a trailing comma ("like,") only matches when followed by one, so
+        # "I like tennis" is left alone. The comma before a filler goes with it: "was, like, good" -> "was good".
+        larp["_fillers"] = [
+            re.compile(rf"(?:,\s*)?\b{re.escape(f.rstrip(','))}" + (r",\s*" if f.endswith(",") else r"\b,?\s*"),
+                       re.IGNORECASE)
+            for f in sorted(larp["fillers"], key=len, reverse=True)]
+        return larp
 
     # ------------------------------------------------------------ analysis
     def embed(self, texts: list[str]) -> np.ndarray:
         return self.model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
-    def current_domain(self, override: str = "auto") -> str:
-        if override in DOMAINS:
-            return override
-        if self.domain_ema is None:
-            return "general"
-        return str(self.clf.classes_[int(np.argmax(self.domain_ema))])
+    def _masked(self, probs: np.ndarray, active: set[str]) -> dict[str, float]:
+        """Field probabilities limited to the checked fields (+ general), renormalized."""
+        keep = {d for d in active if d in FIELDS} | {GENERAL}
+        p = {c: float(v) for c, v in zip(self.classes, probs) if c in keep}
+        total = sum(p.values()) or 1.0
+        return {c: round(v / total, 3) for c, v in p.items()}
 
-    def whisper_prompt(self, override: str = "auto") -> str:
-        """Jargon of the current domain, so Whisper spells it right (free: same API call)."""
-        terms = list(self.glossary[self.current_domain(override)])[:40]
-        return ", ".join(terms)
+    def current_domain(self, active: set[str]) -> str:
+        fields = [d for d in active if d in FIELDS]
+        if len(fields) == 1:
+            return fields[0]            # one box checked = that field, no guessing
+        if not fields or self.domain_ema is None:
+            return GENERAL
+        probs = self._masked(self.domain_ema, active)
+        return max(probs, key=probs.get)
 
-    def analyze(self, text: str, target: str, context: str, override: str = "auto") -> dict:
+    def whisper_prompt(self, active: set[str]) -> str:
+        """Jargon of the checked fields, so Whisper spells it right (free: same API call)."""
+        terms = [t for d in FIELDS if d in active for t in self.glossary[d]]
+        return ", ".join(dict.fromkeys(terms))[:600]
+
+    def analyze(self, text: str, target: str, context: str, active: set[str]) -> dict:
         emb = self.embed([text])[0]
 
         probs = self.clf.predict_proba([emb])[0]
         self.domain_ema = probs if self.domain_ema is None else SMOOTHING * self.domain_ema + (1 - SMOOTHING) * probs
-        domain = self.current_domain(override)
+        domain = self.current_domain(active)
 
+        larp_on = "larp" in active
+        tone = self._tone(text, emb)
+        if larp_on and tone in ("neutral", "calm"):
+            tone = "confident"
         return {
             "domain": domain,
-            "domain_probs": {str(c): round(float(p), 3) for c, p in zip(self.clf.classes_, self.domain_ema)},
-            "tone": self._tone(text, emb),
+            "domain_probs": self._masked(self.domain_ema, active),
+            "tone": tone,
             "terms": self.find_terms(text, domain, target),
             "context_lines": self._relevant_context(context, text, emb),
+            "larp": self.enhance(text) if larp_on else None,
         }
+
+    def enhance(self, text: str) -> dict:
+        """LARP, local part: drop filler words, upgrade weak phrases. Gemini polishes the rest."""
+        out, changes = text, []
+        for rx in self.larp["_fillers"]:
+            for m in rx.finditer(out):
+                changes.append({"from": m.group(0).strip(" ,"), "to": ""})
+            out = rx.sub(" ", out)
+        for rx, better in self.larp["_upgrades"]:
+            def swap(m):
+                changes.append({"from": m.group(0), "to": better})
+                return better[0].upper() + better[1:] if m.group(0)[0].isupper() else better
+            out = rx.sub(swap, out)
+        out = re.sub(r"\s+([,.!?])", r"\1", re.sub(r"\s{2,}", " ", out)).strip(" ,")
+        out = out[:1].upper() + out[1:]
+        return {"text": out, "changes": changes}
+
+    def larp_instruction(self, domain: str) -> str:
+        field = FIELDS.get(domain, "").lower() or "subject-matter"
+        return self.larp["style"].format(field=field)
 
     def _tone(self, text: str, emb: np.ndarray) -> str:
         s = text.strip()

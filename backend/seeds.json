@@ -1,7 +1,35 @@
 {
-  "_note": "Built-in fallback data so the backend works before data/ is filled in. data/glossaries/<domain>.json and data/train.jsonl are merged on top of this. First option = default translation.",
+  "_note": "Built-in fallback used only for contexts with no file in data/ yet. data/glossaries/<context>.json, data/train.jsonl and data/larp.json replace the matching part. First option = default translation.",
 
   "domains": {
+    "pickleball": [
+      "Stay out of the kitchen unless the ball bounces first.",
+      "Hit a soft dink cross-court and wait for a pop-up.",
+      "The third shot drop is the hardest shot in pickleball.",
+      "My new paddle has a lot more spin than my old one.",
+      "That was a fault, your foot was in the non-volley zone.",
+      "Let's play doubles and switch partners after each game.",
+      "You have to let the return bounce before you volley.",
+      "She pulled off an Erne right at the net.",
+      "The serve has to be underhand and below the waist.",
+      "Call the score before you serve: four, two, one.",
+      "We're stacking so I stay on the forehand side.",
+      "His DUPR rating went up after the tournament."
+    ],
+    "tennis": [
+      "It's deuce again, she needs two more points.",
+      "He served an ace down the T on break point.",
+      "She won the first set six-four.",
+      "Love-fifteen, and he double-faulted again.",
+      "The match went to a tiebreak in the third set.",
+      "Hit more topspin so the ball dips inside the baseline.",
+      "Advantage server, one point for the game.",
+      "He played a perfect drop shot from behind the baseline.",
+      "My racket strings snapped during the rally.",
+      "Clay courts are slower than hard courts.",
+      "She hit a backhand down the line to break serve.",
+      "The umpire called the ball out, but Hawk-Eye said it was in."
+    ],
     "cs": [
       "The kernel scheduler preempts the thread when its time slice ends.",
       "Can you merge my branch after the CI pipeline passes?",
@@ -16,33 +44,19 @@
       "The garbage collector pauses the program for a few milliseconds.",
       "Store the hash in the database and index that column."
     ],
-    "med": [
-      "The patient presented with a fever and acute abdominal pain.",
-      "The blood culture came back positive for staph.",
-      "We'll discharge her tomorrow if her vitals stay stable.",
-      "Order a CBC and a chest X-ray, stat.",
-      "The lesion looks benign, but let's do a biopsy.",
-      "He has a history of hypertension and type 2 diabetes.",
-      "Start him on IV antibiotics and monitor his kidney function.",
-      "Her symptoms suggest a viral infection rather than bacterial.",
-      "The MRI showed no sign of a stroke.",
-      "Increase the dose to 500 milligrams twice a day.",
-      "Check the incision site for signs of infection.",
-      "The ER triaged him as a level two."
-    ],
-    "academia": [
-      "My advisor wants me to submit the paper to the conference by Friday.",
-      "The committee approved my thesis defense date.",
-      "Reviewer two asked us to rewrite the abstract.",
-      "She just got tenure in the physics department.",
-      "Our lab is applying for a new research grant this fall.",
-      "The literature review covers the last twenty years of the field.",
-      "I'm presenting a poster at the symposium next month.",
-      "The seminar is cross-listed with the graduate program.",
-      "We need more participants before the study has enough statistical power.",
-      "The journal accepted our manuscript with minor revisions.",
-      "My dissertation chapter on methodology is almost done.",
-      "Office hours are moved to Thursday because of the midterm."
+    "math": [
+      "Every finite integral domain is a field.",
+      "The set of even numbers is closed under addition.",
+      "Take the limit as x goes to infinity.",
+      "The proof follows by induction on n.",
+      "Find the roots of the polynomial.",
+      "The derivative of the function is zero at the maximum.",
+      "This matrix is invertible because its determinant isn't zero.",
+      "The integers form a ring but not a field.",
+      "Every group of prime order is cyclic.",
+      "The mean of the distribution is the expected value.",
+      "Show that the sum of two odd numbers is even.",
+      "The eigenvalues of a symmetric matrix are real."
     ],
     "general": [
       "Where should we go for lunch today?",
@@ -68,6 +82,27 @@
   },
 
   "glossary": {
+    "pickleball": {
+      "kitchen":   {"Korean": ["키친(논발리 존)", "부엌"], "Spanish": ["zona de no volea", "cocina"]},
+      "dink":      {"Korean": ["딩크", "살짝 치기"], "Spanish": ["dink", "toque suave"]},
+      "serve":     {"Korean": ["서브", "봉사하다"], "Spanish": ["saque", "servir"]},
+      "volley":    {"Korean": ["발리", "일제 사격"], "Spanish": ["volea", "descarga"]},
+      "paddle":    {"Korean": ["패들", "노"], "Spanish": ["pala", "remo"]},
+      "fault":     {"Korean": ["폴트", "잘못"], "Spanish": ["falta", "culpa"]},
+      "rally":     {"Korean": ["랠리", "집회"], "Spanish": ["peloteo", "mitin"]},
+      "third shot drop": {"Korean": ["서드 샷 드롭", "세 번째 샷 떨어뜨리기"], "Spanish": ["tercer golpe de dejada", "tercer tiro caído"]}
+    },
+    "tennis": {
+      "love":      {"Korean": ["러브(0점)", "사랑"], "Spanish": ["cero", "amor"]},
+      "deuce":     {"Korean": ["듀스"], "Spanish": ["iguales", "deuce"]},
+      "ace":       {"Korean": ["에이스"], "Spanish": ["ace", "as"]},
+      "set":       {"Korean": ["세트", "집합"], "Spanish": ["set", "conjunto"]},
+      "break point": {"Korean": ["브레이크 포인트", "휴식 시점"], "Spanish": ["punto de quiebre", "punto de descanso"]},
+      "court":     {"Korean": ["코트", "법원"], "Spanish": ["pista", "tribunal"]},
+      "match":     {"Korean": ["경기", "성냥"], "Spanish": ["partido", "fósforo"]},
+      "advantage": {"Korean": ["어드밴티지", "이점"], "Spanish": ["ventaja"]},
+      "serve":     {"Korean": ["서브", "봉사하다"], "Spanish": ["saque", "servir"]}
+    },
     "cs": {
       "kernel":    {"Korean": ["커널", "알맹이"], "Spanish": ["núcleo", "grano"]},
       "thread":    {"Korean": ["스레드", "실"], "Spanish": ["hilo", "rosca"]},
@@ -78,30 +113,48 @@
       "branch":    {"Korean": ["브랜치", "나뭇가지"], "Spanish": ["rama", "sucursal"]},
       "shell":     {"Korean": ["셸", "조개껍데기"], "Spanish": ["shell", "concha"]},
       "stack":     {"Korean": ["스택", "더미"], "Spanish": ["pila", "montón"]},
-      "mutex":     {"Korean": ["뮤텍스"], "Spanish": ["mutex"]},
       "pull request": {"Korean": ["풀 리퀘스트", "끌어오기 요청"], "Spanish": ["pull request", "solicitud de extracción"]}
     },
-    "med": {
-      "presented with": {"Korean": ["~의 증상을 보였다", "~을 발표했다"], "Spanish": ["presentó", "se presentó con"]},
-      "culture":   {"Korean": ["배양", "문화"], "Spanish": ["cultivo", "cultura"]},
-      "positive":  {"Korean": ["양성", "긍정적"], "Spanish": ["positivo"]},
-      "discharge": {"Korean": ["퇴원시키다", "방출하다"], "Spanish": ["dar de alta", "descargar"]},
-      "stat":      {"Korean": ["즉시", "통계"], "Spanish": ["de inmediato", "estadística"]},
-      "acute":     {"Korean": ["급성", "날카로운"], "Spanish": ["agudo"]},
-      "lesion":    {"Korean": ["병변", "상처"], "Spanish": ["lesión"]},
-      "benign":    {"Korean": ["양성", "온화한"], "Spanish": ["benigno"]},
-      "vitals":    {"Korean": ["활력징후", "필수품"], "Spanish": ["signos vitales"]}
-    },
-    "academia": {
-      "paper":     {"Korean": ["논문", "종이"], "Spanish": ["artículo", "papel"]},
-      "defense":   {"Korean": ["논문 심사", "방어"], "Spanish": ["defensa de tesis", "defensa"]},
-      "advisor":   {"Korean": ["지도교수", "고문"], "Spanish": ["director de tesis", "asesor"]},
-      "committee": {"Korean": ["심사위원회", "위원회"], "Spanish": ["comité de tesis", "comité"]},
-      "conference": {"Korean": ["학회", "회의"], "Spanish": ["congreso", "conferencia"]},
-      "abstract":  {"Korean": ["초록", "추상적인"], "Spanish": ["resumen", "abstracto"]},
-      "tenure":    {"Korean": ["종신 재직권", "임기"], "Spanish": ["plaza permanente", "mandato"]},
-      "field":     {"Korean": ["분야", "들판"], "Spanish": ["campo", "terreno"]}
+    "math": {
+      "set":       {"Korean": ["집합", "세트"], "Spanish": ["conjunto", "set"]},
+      "field":     {"Korean": ["체", "들판"], "Spanish": ["cuerpo", "campo"]},
+      "ring":      {"Korean": ["환", "반지"], "Spanish": ["anillo"]},
+      "group":     {"Korean": ["군", "그룹"], "Spanish": ["grupo"]},
+      "function":  {"Korean": ["함수", "기능"], "Spanish": ["función"]},
+      "limit":     {"Korean": ["극한", "한계"], "Spanish": ["límite"]},
+      "proof":     {"Korean": ["증명", "증거"], "Spanish": ["demostración", "prueba"]},
+      "root":      {"Korean": ["근", "뿌리"], "Spanish": ["raíz"]},
+      "prime":     {"Korean": ["소수", "최고의"], "Spanish": ["primo", "excelente"]},
+      "derivative": {"Korean": ["도함수", "파생상품"], "Spanish": ["derivada", "derivado"]},
+      "mean":      {"Korean": ["평균", "의미하다"], "Spanish": ["media", "significar"]},
+      "odd":       {"Korean": ["홀수", "이상한"], "Spanish": ["impar", "raro"]}
     },
     "general": {}
+  },
+
+  "larp": {
+    "style": "Make the speaker sound like a confident, seasoned {field} expert: polished and impressive, same meaning, about the same length.",
+    "fillers": ["um", "uh", "erm", "like,", "you know,", "I mean,", "basically,", "sort of", "kind of"],
+    "upgrades": {
+      "I think": "I'm confident that",
+      "I guess": "my read is that",
+      "I feel like": "the evidence suggests",
+      "maybe": "most likely",
+      "pretty good": "excellent",
+      "really good": "outstanding",
+      "good": "strong",
+      "bad": "suboptimal",
+      "a lot of": "a significant amount of",
+      "a lot": "immensely",
+      "stuff": "material",
+      "thing": "element",
+      "try to": "aim to",
+      "figure out": "determine",
+      "look at": "examine",
+      "get better": "improve",
+      "big": "substantial",
+      "easy": "straightforward",
+      "hard": "challenging"
+    }
   }
 }
