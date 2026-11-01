@@ -122,7 +122,7 @@
     resetLearning() { this._send({ t: "reset" }); }
 
     // badges (ids come from status.badges / the "badges" event)
-    /** Use this badge's mic and buttons; the backend pushes it the current config. */
+    /** Use this badge's mic and speaker; the backend pushes it the current config. */
     connectBadge(id) { this._send({ t: "badge", action: "connect", id }); }
     disconnectBadge() { this._send({ t: "badge", action: "disconnect" }); }
     /** Blink/beep the badge so you can tell which one it is. */

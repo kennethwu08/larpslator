@@ -19,11 +19,12 @@ def test_badge_sentence_is_translated_and_played_back_to_the_badge(app_main, mon
         with client.websocket_connect("/ws/dashboard" + TOKEN) as dash, \
                 client.websocket_connect("/ws/badge" + TOKEN) as badge:
             badge.send_text(json.dumps({"t": "hello", "id": "TEST-BADGE"}))
-            badge.send_text(json.dumps({"t": "ptt", "state": "start"}))
+            dash.send_text(json.dumps({"t": "mode", "state": "listen"}))
+            time.sleep(0.2)  # the hello and listen are handled before audio arrives
             audio = voice_like(1.2)
             for i in range(0, len(audio), 1024):  # the badge's 512-sample frames
                 badge.send_bytes(audio[i:i + 1024])
-            badge.send_text(json.dumps({"t": "ptt", "state": "end"}))  # releases push-to-talk: ends the sentence
+            dash.send_text(json.dumps({"t": "mode", "state": "stop"}))  # Stop ends the sentence right away
 
             utt, deadline = None, time.time() + 10
             while time.time() < deadline and not utt:

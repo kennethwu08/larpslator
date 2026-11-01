@@ -20,7 +20,8 @@ Mic frames: any size up to 32 KB (bigger frames are dropped). Odd-sized frames a
 
 ## Badge -> server  (`ws://<laptop-ip>:8000/ws/badge`)
 The dashboard shows the exact address under Badge → "How to connect a badge".
-Everything except audio + `ptt` is optional: a badge that only streams audio and sends buttons still works.
+Everything except audio is optional: a badge that only streams mic audio and plays what comes back still works.
+The badge has no buttons: listening is started and stopped on the dashboard, and feedback (👍/👎) is given there too.
 Several badges can be online; only the one **connected** on the dashboard is used (the first one online is connected automatically).
 
 - Binary frames: mic audio (512-sample chunks are fine; any size works). Only used from the connected badge.
@@ -31,15 +32,9 @@ Several badges can be online; only the one **connected** on the dashboard is use
   something changes (all fields optional). `config_v` = the `v` of the last `config` you applied; the
   dashboard then shows "synced ✓".
 - `{"t":"pong","battery":86}`: reply to `ping` (gives the dashboard the latency; extra fields like `state`).
-- `{"t":"ptt","state":"start"}`: talk button pressed (starts listening)
-- `{"t":"ptt","state":"end"}`: talk button released (ends the sentence right away and stops listening)
-- `{"t":"fb","val":1}` / `{"t":"fb","val":-1}`: thumbs up / down on the latest sentence. Up credits every jargon choice.
-  Down blames the one term the model is least sure about and replays the sentence with that term's next option.
-- `{"t":"mode","domain":"cs"}`: BOOT button cycles `auto` / `pickleball` / `tennis` / `cs` / `math`.
-  `auto` checks every field; a field name checks only that field. LARP stays as it was.
 
 ## Server -> badge
-- `{"t":"active","value":true}`: this badge is (or isn't) the connected one. Inactive badges can show an idle LED; their audio and buttons are ignored.
+- `{"t":"active","value":true}`: this badge is (or isn't) the connected one. Inactive badges can show an idle LED; their audio is ignored.
 - `{"t":"config","v":4,"listening":true,"target":"Korean","fields":["tennis","math"],"larp":true,"domain":"auto","voice":"Bernard","voice_setup":false}`:
   everything the badge might show (LEDs/screen). Sent on connect and whenever anything changes; `v` goes up each time.
   `voice` is empty while a stock voice is used; `voice_setup` is true while the user is recording their voice sample.
@@ -66,7 +61,7 @@ dashboard hides the section) and `/ws/web` refuses the connection. The flag is c
   `{"t":"hello","client":"web","id":"web-1","sample_rate":16000,"resume_after_ms":300}`.
 - Browser → server: binary frames of 16 kHz 16-bit mono PCM mic audio (the dashboard sends 100 ms = 3200 bytes).
 - `{"t":"mode","state":"listen"}` / `{"t":"mode","state":"stop"}` on **this** socket is the browser's own Listen/Stop,
-  independent of the badge. Stop also ends the sentence being spoken (like releasing push-to-talk).
+  independent of the badge. Stop also ends the sentence being spoken (like the dashboard's Stop does for the badge).
 - Any other message on this socket (`fb`, `context`, `toggle`, `lang`, ...) works exactly as on `/ws/dashboard`.
 - Server → browser: the translation as binary frames of 16 kHz 16-bit mono PCM (3200 bytes, paced at real time),
   only for sentences this browser said. The browser plays them with Web Audio at 16 kHz and doesn't send mic audio until

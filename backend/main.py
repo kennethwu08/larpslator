@@ -208,7 +208,7 @@ class Segmenter:
         return done
 
     def flush(self) -> tuple[bytes, float] | None:
-        """End the current sentence now (end of file, or push-to-talk released)."""
+        """End the current sentence now (end of file, or Stop pressed)."""
         return self._finish() if self.in_speech else None
 
     def _finish(self) -> tuple[bytes, float] | None:
@@ -586,7 +586,7 @@ class Badge(AudioClient):
         self.ping_sent = 0.0
 
     def hears(self) -> bool:
-        # Only the connected badge, and only while listening (dashboard Listen or push-to-talk).
+        # Only the connected badge, and only while listening (the dashboard's Listen).
         return self.id == state.active_badge and state.listening
 
     def report(self, msg: dict):
@@ -692,7 +692,7 @@ class State:
         self.context_name = packs[0]["name"] if packs else ""
         self.context = packs[0]["text"] if packs else ""   # reuse the most recent pack on restart
         self.badges: dict[str, Badge] = {}      # every badge online, by id
-        self.active_badge: str | None = None    # the one the dashboard connected; only its mic and buttons count
+        self.active_badge: str | None = None    # the one the dashboard connected; only its mic counts
         self.badge_seq = 0
         self.badge_names: dict[str, str] = {}   # names given on the dashboard; win over what the badge reports
         self.config_v = 0                       # bumped whenever badge_config() changes
@@ -703,7 +703,6 @@ class State:
         self.queue: asyncio.Queue = asyncio.Queue()
         self.next_id = 1
         self.utterances: dict[int, dict] = {}
-        self.last_id: int | None = None
         self.recording: dict | None = None   # voice setup in progress: {"name", "pcm", "speech_ms", "vad"}
 
     @property
@@ -862,7 +861,6 @@ async def process_sentence(pcm: bytes, vad_s: float, client: AudioClient):
     log_timing(uid, r, client.kind)
     utt = {"id": uid, "retry": 0, "rejected": {}, **origin, **r}
     state.utterances[uid] = utt
-    state.last_id = uid
     await broadcast(public(utt))
     await play_to(client, r["audio"])
 
@@ -968,7 +966,7 @@ async def handle_badge_command(msg: dict):
 
 
 async def handle_badge_message(badge: Badge, msg: dict):
-    """JSON from a badge: its own hello/state/pong, else buttons (only from the connected badge)."""
+    """JSON from a badge: hello/state/pong. The badge has no buttons; everything else is ignored."""
     badge.last_seen = time.monotonic()
     t = msg.get("t")
     if t == "hello":
@@ -996,8 +994,8 @@ async def handle_badge_message(badge: Badge, msg: dict):
         badge.report(msg)
         if t == "state":
             await broadcast({"t": "badges", "badges": state.badges_info()})
-    elif badge.id == state.active_badge:
-        await handle_control(msg)  # ptt, fb, mode (BOOT button)
+    else:
+        log.warning("ignored badge message: %s", msg)
 
 
 async def badge_heartbeat():
@@ -1015,30 +1013,19 @@ async def badge_heartbeat():
 
 
 async def handle_control(msg: dict):
-    """JSON messages from the dashboard, and button messages from the connected badge."""
+    """JSON messages from the dashboard (and the web audio fallback)."""
     t = msg.get("t")
     active = state.badges.get(state.active_badge or "")
     if t == "mode" and msg.get("state") in ("listen", "stop"):
         state.listening = msg["state"] == "listen"
-        if active:
+        if active and state.listening:
             active.segmenter.reset()
+        elif active and (sentence := active.segmenter.flush()):  # Stop ends the sentence being spoken
+            await state.queue.put(("sentence", *sentence, active))
     elif t == "toggle" and msg.get("id") in {**FIELDS, **STYLES}:  # a context checkbox
         state.active = (state.active | {msg["id"]}) if msg.get("on") else (state.active - {msg["id"]})
-    elif t == "mode" and (msg.get("domain") == "auto" or msg.get("domain") in FIELDS):
-        # Badge BOOT button: "auto" checks every field, a field name checks only that one. LARP is kept.
-        fields = set(FIELDS) if msg["domain"] == "auto" else {msg["domain"]}
-        state.active = fields | (state.active & set(STYLES))
-    elif t == "ptt":  # push-to-talk from the badge: release ends the sentence immediately
-        if msg.get("state") == "start":
-            state.listening = True
-            if active:
-                active.segmenter.reset()
-        elif msg.get("state") == "end":
-            if active and (sentence := active.segmenter.flush()):
-                await state.queue.put(("sentence", *sentence, active))
-            state.listening = False
     elif t == "fb" and msg.get("val") in (1, -1):
-        uid = msg.get("id") or state.last_id  # the badge's buttons apply to the latest sentence
+        uid = msg.get("id")
         utt = state.utterances.get(uid)
         log_feedback(msg["val"], utt)
         blamed = None

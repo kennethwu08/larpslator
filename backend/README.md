@@ -84,12 +84,12 @@ WEB_AUDIO_FALLBACK=1 python serve.py
 
 ## Badges
 
-The backend controls the badge. The dashboard's **Badge** panel lists every badge online. **Connect** picks the one whose mic and buttons are used (the first one online is connected automatically). It shows the badge's language, contexts, LARP, listening state, voice, battery, Wi-Fi, latency, firmware and whether it confirmed the latest settings, and has Identify (blink), volume and Disconnect.
+The backend controls the badge. The dashboard's **Badge** panel lists every badge online. **Connect** picks the one whose mic is used (the first one online is connected automatically). It shows the badge's language, contexts, LARP, listening state, voice, battery, Wi-Fi, latency, firmware and whether it confirmed the latest settings, and has Identify (blink), volume and Disconnect.
 
 - Whenever anything changes on the dashboard, the backend pushes the badge a `config` message (language, contexts, LARP, listening, voice). The badge can show it on LEDs and confirms it with `config_v`.
 - A ping every 5 s gives latency and battery. Dead connections are closed by uvicorn's own WebSocket pings.
 - The panel shows the address for the badge's `config.h` (`ws://<this laptop's IP>:8000/ws/badge`), which changes with the network (hotspot).
-- All badge info messages are optional, so firmware that only streams audio and buttons still works. Protocol: [../docs/messages.md](../docs/messages.md).
+- All badge info messages are optional, so firmware that only streams audio and plays the translation still works. Protocol: [../docs/messages.md](../docs/messages.md).
 
 ## Voice setup (do this first)
 
@@ -116,7 +116,7 @@ Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fiel
 
 ## How it works
 
-1. **VAD.** `webrtcvad` checks every 30 ms frame. A sentence ends after 0.7 s of silence (or after 15 s). Blips under 0.4 s are dropped, because speech to text invents words for them. Push-to-talk release ends a sentence immediately.
+1. **VAD.** `webrtcvad` checks every 30 ms frame. A sentence ends after 0.7 s of silence (or after 15 s). Blips under 0.4 s are dropped, because speech to text invents words for them. Pressing Stop on the dashboard ends a sentence immediately.
 2. **Speech to text: ElevenLabs Scribe** (`scribe_v2`, same key as the voice) transcribes the sentence and detects its language (Korean and Tamil too). The checked fields' jargon is sent as `keyterms` so it's spelled right ("kernel", not "colonel"). Featherless has no speech-to-text; a speech model run locally on the laptop was slower (2.9 s vs 0.6 s) and misheard jargon ("colonel" for "kernel") in testing.
 3. **Local ML** (`ml.py`, ~10 ms on CPU):
    - **Field:** MiniLM sentence embedding → LogisticRegression, trained at startup on the training sentences and glossary terms. Unchecked fields are masked out. Smoothed over the conversation so one odd sentence doesn't flip it.
@@ -134,9 +134,9 @@ Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fiel
 
 ## Feedback and learning
 
-- 👍 (dashboard or badge): every jargon choice in that sentence gets a success.
+- 👍 on the dashboard: every jargon choice in that sentence gets a success.
 - 👎 on the dashboard **chip** of a word (e.g. `branch → 나뭇가지`): that word gets a failure and the sentence is replayed with its next option.
-- 👎 button (dashboard row or badge): the same, applied to the word the model is least sure about.
+- 👎 on the dashboard row: the same, applied to the word the model is least sure about.
 - One 👎 is enough to switch a word's default; the choice is remembered across restarts (`state/term_stats.json`). **Reset learning** on the dashboard clears it before a demo.
 - The dashboard shows term accuracy and a rolling learning curve (last 5 ratings).
 
