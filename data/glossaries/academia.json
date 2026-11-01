@@ -18,5 +18,21 @@
   "발산": ["divergence", "release (of stress or energy)"],
   "학회": ["academic conference", "academic society", "student club"],
   "심사": ["review", "judging", "screening"],
-  "조교": ["teaching assistant", "drill instructor"]
+  "조교": ["teaching assistant", "drill instructor"],
+  "함수": ["function"],
+  "내적": ["dot product", "internal", "inner"],
+  "외적": ["cross product", "external", "outward"],
+  "공간": ["space", "room", "gap"],
+  "사상": ["mapping", "ideology", "thought"],
+  "대수": ["algebra", "majority", "large number"],
+  "기저": ["basis", "base", "underlying"],
+  "분산": ["variance", "dispersion", "distribution"],
+  "표본": ["sample", "specimen"],
+  "급수": ["series", "grade", "rank"],
+  "항": ["term", "port", "item"],
+  "계수": ["coefficient", "counting"],
+  "차수": ["degree", "number of times", "order"],
+  "근사": ["approximation", "cool", "stylish"],
+  "연속": ["continuous", "consecutive"],
+  "독립": ["independent", "independence (of a country)"]
 }

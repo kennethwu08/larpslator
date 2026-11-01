@@ -31,6 +31,39 @@ Fix the JSON file directly if something is off. Notes marked ⚠️ are entries 
 | cs | 재귀 | recursion | returning | 이 문제는 재귀로 풀면 간단해요. | This problem is simple if you solve it with recursion. |
 | cs | 주석 | comment | annotation, tin | 코드에 주석 좀 달아 주세요. | Please add some comments to the code. |
 | cs | 소스 | source code | sauce | 소스 좀 깃허브에 올려 주세요. | Please push the source code to GitHub. |
+| cs | 객체 | object | entity | 이 객체를 JSON으로 변환해 주세요. | Convert this object to JSON. |
+| cs | 정점 | vertex | peak, summit | 그래프에 정점이 다섯 개 있어요. | The graph has five vertices. |
+| cs | 간선 | edge | arterial road, trunk line | 두 정점 사이에 간선을 추가하세요. | Add an edge between the two vertices. |
+| cs | 루트 | root | route | 트리의 루트부터 탐색을 시작해요. | We start the search from the root of the tree. |
+| cs | 키 | key | height | 이 키가 딕셔너리에 있는지 확인해 보세요. | Check whether this key is in the dictionary. |
+| cs | 값 | value | price | 이 키에 해당하는 값을 가져오세요. | Get the value for this key. |
+| cs | 정렬 | sort | alignment | 배열을 오름차순으로 정렬하세요. | Sort the array in ascending order. |
+| cs | 분기 | branch | quarter (of a year) | 여기서 조건에 따라 분기해요. | Here it branches depending on the condition. |
+| cs | 배포 | deployment | distribution, handing out | 오늘 밤에 서버에 배포할게요. | I'll deploy to the server tonight. |
+| cs | 풀 | pull | pool, grass, glue | 작업하기 전에 풀 먼저 받으세요. | Pull first before you start working. |
+| cs | 모델 | model | fashion model | 모델을 더 큰 데이터로 다시 학습시켰어요. | We retrained the model on more data. |
+| cs | 학습 | training | learning, studying | 모델 학습에 세 시간 걸렸어요. | Training the model took three hours. |
+| cs | 손실 | loss | damage | 에폭마다 손실이 줄어들고 있어요. | The loss is going down every epoch. |
+| cs | 추론 | inference | reasoning, deduction | 추론 속도가 너무 느려요. | Inference is too slow. |
+| cs | 층 | layer | floor, story | 층을 하나 더 쌓으면 성능이 좋아질까요? | Would performance improve if we stack one more layer? |
+| cs | 편향 | bias | prejudice | 가중치와 편향을 초기화하세요. | Initialize the weights and biases. |
+| cs | 차원 | dimension | level | 임베딩 벡터는 768차원이에요. | The embedding vectors are 768-dimensional. |
+| cs | 동기 | synchronous | motivation, peer | 이 함수는 동기 방식이라 응답을 기다려요. | This function is synchronous, so it waits for the response. |
+| cs | 호출 | call | summon, page | API를 너무 많이 호출하면 요금이 나와요. | If you call the API too many times, you get charged. |
+| cs | 비트 | bit | beat | 정수는 32비트로 저장돼요. | Integers are stored in 32 bits. |
+| cs | 문자 | character | text message, letter | 문자열에서 첫 번째 문자만 잘라 주세요. | Take just the first character of the string. |
+| cs | 탐색 | search | exploration, reconnaissance | 너비 우선 탐색으로 최단 경로를 찾아요. | We find the shortest path with breadth-first search. |
+| cs | 프론트 | frontend | front desk | 프론트는 제가 맡을게요. | I'll take care of the frontend. |
+| cs | 컨테이너 | container | shipping container | 도커 컨테이너가 계속 죽어요. | The Docker container keeps crashing. |
+| cs | 이슈 | issue | hot topic | 깃허브에 이슈 하나 열어 주세요. | Please open an issue on GitHub. |
+| cs | 병합 | merge | annexation | 두 브랜치를 병합하면 충돌이 나요. | Merging the two branches causes a conflict. |
+| cs | 참조 | reference | consultation | 이 변수는 원본 객체를 참조하고 있어요. | This variable references the original object. |
+| cs | 메모리 | memory | recollection | 메모리가 부족해서 프로그램이 죽었어요. | The program crashed because it ran out of memory. |
+
+⚠️ **CS entries with more than one technical meaning:**
+- **정렬**: means *sort* for data, but *alignment* in UI/CSS talk (가운데 정렬 = center alignment).
+- **풀**: means *pull* in git talk (풀 받다, 풀 리퀘스트), but *pool* in 스레드 풀 / 커넥션 풀.
+- **분기**: git branches are usually called 브랜치, so 분기 mostly comes up for code branching (if/else).
 
 ## Medicine (`med.json`)
 
@@ -83,5 +116,21 @@ Fix the JSON file directly if something is off. Notes marked ⚠️ are entries 
 | academia | 학회 | academic conference | academic society, student club | 다음 달에 학회에서 논문 발표해요. | I'm presenting my paper at a conference next month. |
 | academia | 심사 | review | judging, screening | 논문이 지금 심사 중이에요. | The paper is currently under review. |
 | academia | 조교 | teaching assistant | drill instructor | 과제 질문은 조교한테 메일 보내세요. | Email the TA with questions about the assignment. |
+| academia | 함수 | function | (none) | 이 함수의 정의역을 구하세요. | Find the domain of this function. |
+| academia | 내적 | dot product | internal, inner | 두 벡터의 내적을 구하세요. | Find the dot product of the two vectors. |
+| academia | 외적 | cross product | external, outward | 외적의 결과는 벡터예요. | The result of a cross product is a vector. |
+| academia | 공간 | space | room, gap | 이 벡터들은 3차원 공간을 생성해요. | These vectors span three-dimensional space. |
+| academia | 사상 | mapping | ideology, thought | 이 선형 사상은 일대일이에요. | This linear mapping is one-to-one. |
+| academia | 대수 | algebra | majority, large number | 이번 학기에 대수 수업을 들어요. | I'm taking an algebra class this semester. |
+| academia | 기저 | basis | base, underlying | 이 두 벡터가 평면의 기저가 돼요. | These two vectors form a basis for the plane. |
+| academia | 분산 | variance | dispersion, distribution | 표본의 분산을 계산하세요. | Compute the variance of the sample. |
+| academia | 표본 | sample | specimen | 표본 크기가 너무 작아요. | The sample size is too small. |
+| academia | 급수 | series | grade, rank | 이 급수의 합을 구하세요. | Find the sum of this series. |
+| academia | 항 | term | port, item | 첫째 항이 1이고 공비가 2예요. | The first term is 1 and the common ratio is 2. |
+| academia | 계수 | coefficient | counting | x제곱의 계수는 3이에요. | The coefficient of x squared is 3. |
+| academia | 차수 | degree | number of times, order | 이 다항식의 차수는 4예요. | The degree of this polynomial is 4. |
+| academia | 근사 | approximation | cool, stylish | 테일러 급수로 근사하면 오차가 작아요. | If you approximate with a Taylor series, the error is small. |
+| academia | 연속 | continuous | consecutive | 이 함수는 x=0에서 연속이에요. | This function is continuous at x = 0. |
+| academia | 독립 | independent | independence (of a country) | 두 사건은 서로 독립이에요. | The two events are independent of each other. |
 
 ⚠️ **학회**: "academic society" is also a valid meaning (e.g. 한국물리학회 = Korean Physical Society). "Conference" is the default because in speech "학회 가요" almost always means going to a conference.
