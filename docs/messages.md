@@ -104,7 +104,7 @@ Several badges can be online; only the one **connected** on the dashboard is use
  "terms":[{"term":"kernel","match":"kernel","pos":4,"domain":"cs","options":["커널","알맹이"],"choice":"커널"},
           {"term":"thread","match":"thread","pos":31,"domain":"cs","options":["스레드","실"],"choice":"스레드"}],
  "context_lines":["Prof. Lee","Agenda: scheduler review"],
- "timing_ms":{"vad":0.4,"whisper":620,"ml":11,"gemini":410,"elevenlabs":330,"total":1371}}
+ "timing_ms":{"vad":0.4,"whisper":620,"ml":11,"llm":1410,"elevenlabs":330,"total":1371}}
 ```
 
 `feedback` (`term` is the term that was blamed on a 👎, else null)

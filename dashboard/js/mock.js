@@ -110,8 +110,8 @@
         const probs = {};
         [...fields, "general"].forEach(d => probs[d] = d === x.domain ? 0.7 : +(0.3 / fields.length).toFixed(3));
         const terms = x.terms.map(([term, options]) => ({ term, match: term, pos: source.indexOf(term), domain: x.domain, options, choice: options[0] }));
-        const timing = { vad: 0.4, whisper: rand(450, 750), ml: rand(3, 6), gemini: rand(300, 500), elevenlabs: rand(250, 400) };
-        timing.total = Math.round(timing.vad + timing.whisper + timing.ml + timing.gemini + timing.elevenlabs);
+        const timing = { vad: 0.4, whisper: rand(450, 750), ml: rand(3, 6), llm: rand(1200, 1600), elevenlabs: rand(250, 400) };
+        timing.total = Math.round(timing.vad + timing.whisper + timing.ml + timing.llm + timing.elevenlabs);
         const u = { t: "utterance", id, retry: 0, source, lang: "english", target: this.s.target, translation: x.translation,
           tone: larp ? "confident" : "neutral", domain: x.domain, domain_probs: probs, terms,
           context_lines: this.s.notes.text ? this.s.notes.text.split("\n").filter(Boolean).slice(0, 5) : [],
@@ -147,7 +147,7 @@
       setTimeout(() => {
         const terms = u.terms.map(t => t === blamed ? { ...t, choice: next } : t);
         const r = { ...u, retry: u.retry + 1, terms, translation: u.translation.replace(blamed.choice, next),
-          timing_ms: { gemini: rand(300, 500), elevenlabs: rand(250, 400), total: rand(600, 900) } };
+          timing_ms: { llm: rand(1200, 1600), elevenlabs: rand(250, 400), total: rand(600, 900) } };
         this.utts[id] = r;
         this.emit("utterance", r);
       }, 600);

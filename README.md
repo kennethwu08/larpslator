@@ -12,7 +12,7 @@ Regular translators don't know the context, so technical words come out wrong: "
 - **Live dashboard:** shows the conversation, the detected field, the special words it found, and a plain translation side by side with the context-aware one
 
 ## How it works
-Badge (ESP32) → speech-to-text (Whisper) → field detection and jargon choice (local ML, free) → translation (Gemini) → ElevenLabs voice → back to the badge, with everything shown live on the dashboard. See [backend/README.md](backend/README.md) to run it.
+Badge (ESP32) → speech-to-text (Whisper) → field detection and jargon choice (local ML, free) → translation (Featherless LLM) → ElevenLabs voice → back to the badge, with everything shown live on the dashboard. See [backend/README.md](backend/README.md) to run it.
 
 **Team: read [docs/backend-handoff.md](docs/backend-handoff.md) first:** what's built, who owns what, and what not to change.
 

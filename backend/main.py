@@ -1,6 +1,6 @@
-"""Larpslator backend: badge audio -> VAD -> Whisper -> local ML -> Gemini -> ElevenLabs -> badge.
+"""Larpslator backend: badge audio -> VAD -> Whisper -> local ML -> Featherless LLM -> ElevenLabs -> badge.
 
-Gemini only translates (and, in LARP mode, polishes in the same call). Field detection,
+The LLM only translates (and, in LARP mode, polishes in the same call). Field detection,
 tone, jargon choice, context trimming, LARP phrase upgrades and learning from feedback
 all run locally (ml.py), so they cost nothing.
 
@@ -28,8 +28,6 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from google import genai
-from google.genai import types
 from openai import OpenAI
 
 HERE = Path(__file__).parent
@@ -64,7 +62,17 @@ MAX_SENTENCE_MS = 15000                            # force a cut on very long sp
 RESUME_AFTER_PLAYBACK_S = 0.3                      # badge unmutes this long after playback ends
 SEND_CHUNK_BYTES = 3200                            # 100 ms of audio per WebSocket frame
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite"
+# Translation LLM on Featherless (OpenAI-compatible API). Picked by benchmark on Nov 1: Mistral Small 3.2 made no
+# wrong-language replies in 12 test sentences at ~1.4 s; Qwen 2.5 7B/14B drifted into English/Chinese on Korean.
+LLM_MODEL = os.getenv("FEATHERLESS_MODEL") or "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+LLM_FALLBACK = os.getenv("FEATHERLESS_FALLBACK_MODEL") or "mistralai/Mistral-Nemo-Instruct-2407"
+# Characters each target language must (or must not) contain, to catch replies in the wrong language.
+HANGUL, HAN, KANA, TAMIL = r"[\uac00-\ud7a3]", r"[\u4e00-\u9fff]", r"[\u3040-\u30ff]", r"[\u0b80-\u0bff]"
+SCRIPT_RULES = {  # target: (must contain, must not contain)
+    "Korean": (HANGUL, HAN), "Japanese": (KANA, HANGUL), "Mandarin Chinese": (HAN, HANGUL + "|" + KANA),
+    "Tamil": (TAMIL, HAN + "|" + HANGUL),
+}
+LATIN_FORBIDDEN = HAN + "|" + HANGUL + "|" + KANA     # Spanish, French, German, English...
 TTS_MODEL = os.getenv("ELEVENLABS_MODEL") or "eleven_flash_v2_5"
 STOCK_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # premade ElevenLabs voice, used only until the user's voice is set up
 MIN_SAMPLE_SPEECH_S = 20                 # voice setup: least speech accepted; ~60 s sounds much more like you
@@ -88,12 +96,14 @@ CACHE_DIR = HERE / "cache"
 for d in (CONTEXT_DIR, LOG_DIR, CACHE_DIR / "tts"):
     d.mkdir(parents=True, exist_ok=True)
 
-missing = [k for k in ("OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY") if not os.getenv(k)]
+missing = [k for k in ("OPENAI_API_KEY", "FEATHERLESS_API_KEY", "ELEVENLABS_API_KEY") if not os.getenv(k)]
 if missing:
     raise SystemExit(f"Missing in .env: {', '.join(missing)} (see .env.example in the repo root)")
 
 openai_client = OpenAI()  # reads OPENAI_API_KEY
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# Featherless speaks the OpenAI API, so the same SDK works with a different base URL.
+llm_client = OpenAI(api_key=os.getenv("FEATHERLESS_API_KEY"), base_url="https://api.featherless.ai/v1",
+                    timeout=25, max_retries=1)
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
 from ml import FIELDS, STYLES, LocalML  # noqa: E402  (slow import: loads torch)
@@ -192,13 +202,32 @@ except (OSError, json.JSONDecodeError):
     _translation_cache = {}
 
 
+def translation_system_prompt(target: str) -> str:
+    # The "never write Chinese or English" line stops open models from drifting into commentary.
+    other = "" if target in ("Mandarin Chinese", "English") else " Never write Chinese or English."
+    return (f"You translate the user's text into {target}. Reply with the {target} translation only, on one line: "
+            f"no quotes, notes, explanations or romanization.{other}")
+
+
+def in_target_language(text: str, target: str) -> bool:
+    must, must_not = SCRIPT_RULES.get(target, (None, LATIN_FORBIDDEN))
+    if not text or re.search(must_not, text):
+        return False
+    if must is None:
+        return True
+    # Non-Latin targets: mostly target script. Some English is fine (names, "API"); a half-translated
+    # "SHE won the first 세트 after a long 듀스 game." is not.
+    native, latin = len(re.findall(must, text)), len(re.findall(r"[A-Za-z]", text))
+    return native > 0 and latin <= 0.4 * (native + latin)
+
+
 def translate(text: str, target: str, terms: list[dict], context_lines: list[str],
               style: str = "") -> tuple[str, bool]:
-    """The only Gemini call: a short plain-text translation request. Returns (translation, cached).
+    """The only LLM call: a short plain-text translation request. Returns (translation, cached).
 
-    `style` is the LARP instruction; it rides along in the same request, no extra call."""
-    system = (f"You are a translation engine. Output only the {target} translation: "
-              "no quotes, notes, romanization or explanations.")
+    `style` is the LARP instruction; it rides along in the same request, no extra call.
+    Tries LLM_MODEL, then LLM_FALLBACK if it errors or answers in the wrong language."""
+    system = translation_system_prompt(target)
     lines = [f"Translate into {target}."]
     if style:
         lines.append(style)
@@ -209,25 +238,50 @@ def translate(text: str, target: str, terms: list[dict], context_lines: list[str
     lines.append(f"Text: {text}")
     prompt = "\n".join(lines)
 
-    key = hashlib.sha1(f"{GEMINI_MODEL}\n{system}\n{prompt}".encode()).hexdigest()
+    key = hashlib.sha1(f"{LLM_MODEL}\n{system}\n{prompt}".encode()).hexdigest()
     if key in _translation_cache:
         return _translation_cache[key], True
 
-    config = types.GenerateContentConfig(system_instruction=system, temperature=0, max_output_tokens=400)
-    if "2.5" in GEMINI_MODEL:
-        config.thinking_config = types.ThinkingConfig(thinking_budget=0)  # thinking adds latency and cost
-    r = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=config)
-    out = clean_output(r.text or "")
-    if not out:
-        raise RuntimeError("Gemini returned an empty translation")
-    _translation_cache[key] = out
-    _translation_cache_file.write_text(json.dumps(_translation_cache, ensure_ascii=False))
-    return out, False
+    problem = "no model tried"
+    for model in dict.fromkeys([LLM_MODEL, LLM_FALLBACK]):  # dedupe if both are the same
+        try:
+            r = llm_client.chat.completions.create(
+                model=model, temperature=0, max_tokens=400,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            )
+        except Exception as e:
+            problem = f"{model}: {type(e).__name__}: {e}"
+            log.warning("LLM %s", problem)
+            continue
+        out = clean_output(r.choices[0].message.content or "", target)
+        if in_target_language(out, target):
+            if model != LLM_MODEL:
+                log.info("translated by fallback model %s", model)
+            _translation_cache[key] = out
+            _translation_cache_file.write_text(json.dumps(_translation_cache, ensure_ascii=False))
+            return out, False
+        problem = f"{model} answered in the wrong language: {out[:80]!r}"
+        log.warning("LLM %s", problem)
+    raise RuntimeError(f"translation failed ({problem})")
 
 
-def clean_output(text: str) -> str:
-    """Models sometimes add a label, quotes or a note after the translation; keep just the translation."""
-    text = text.strip().split("\n\n")[0].strip()
+def warm_up_llm():
+    """Featherless loads a model on first use (several seconds); do that at startup, not on the first sentence."""
+    t = time.perf_counter()
+    try:
+        translate("Hello.", DEFAULT_TARGET, [], [])
+        log.info("LLM %s warmed up in %.1f s", LLM_MODEL, time.perf_counter() - t)
+    except Exception as e:
+        log.warning("LLM warm-up failed (translations will retry): %s", e)
+
+
+def clean_output(text: str, target: str = "") -> str:
+    """Models sometimes add a label, quotes, reasoning or a note; keep just the translation line."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if target:  # prefer the first line that's actually in the target language
+        lines = [l for l in lines if in_target_language(l, target)] or lines
+    text = lines[0] if lines else ""
     text = re.sub(r"^(translation|번역|traducción)\s*[:：]\s*", "", text, flags=re.IGNORECASE)
     if len(text) >= 2 and text[0] in "\"'“「" and text[-1] in "\"'”」":
         text = text[1:-1].strip()
@@ -307,16 +361,16 @@ def synthesize(text: str, tone: str) -> tuple[bytes, bool]:
 
 
 def translate_and_speak(r: dict, timing: dict):
-    """Gemini + ElevenLabs for an analyzed sentence. Fills r["translation"] and r["audio"]."""
+    """LLM + ElevenLabs for an analyzed sentence. Fills r["translation"] and r["audio"]."""
     t = time.perf_counter()
     larp = r.get("larp")
     if not larp and same_language(r["lang"], r["target"]):
-        r["translation"], cached = r["source"], True   # nothing to translate: no Gemini call
+        r["translation"], cached = r["source"], True   # nothing to translate: no LLM call
     else:
         text = larp["text"] if larp else r["source"]   # LARP: send the locally upgraded wording
         style = ML.larp_instruction(r["domain"]) if larp else ""
         r["translation"], cached = translate(text, r["target"], r["terms"], r["context_lines"], style)
-    timing["gemini"] = 0 if cached else round((time.perf_counter() - t) * 1000)
+    timing["llm"] = 0 if cached else round((time.perf_counter() - t) * 1000)
 
     t = time.perf_counter()
     r["audio"], cached = synthesize(r["translation"], r["tone"])
@@ -497,9 +551,10 @@ state = State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    tasks = [asyncio.create_task(worker()), asyncio.create_task(badge_heartbeat())]
-    log.info("ready: target=%s, gemini=%s, tts=%s, context pack=%r",
-             state.target, GEMINI_MODEL, TTS_MODEL, state.context_name or None)
+    tasks = [asyncio.create_task(worker()), asyncio.create_task(badge_heartbeat()),
+             asyncio.create_task(asyncio.to_thread(warm_up_llm))]
+    log.info("ready: target=%s, llm=%s (fallback %s), tts=%s, context pack=%r",
+             state.target, LLM_MODEL, LLM_FALLBACK, TTS_MODEL, state.context_name or None)
     yield
     for task in tasks:
         task.cancel()
@@ -542,9 +597,9 @@ def public(utt: dict) -> dict:
 
 def log_timing(uid: int, r: dict):
     tm = r["timing_ms"]
-    log.info("utt %d | vad %.1fms | whisper %sms | ml %sms | gemini %sms | elevenlabs %sms | total %sms | "
+    log.info("utt %d | vad %.1fms | whisper %sms | ml %sms | llm %sms | elevenlabs %sms | total %sms | "
              "%s/%s | %r%s -> %r | terms %s",
-             uid, tm.get("vad", 0), tm.get("whisper", "-"), tm.get("ml", "-"), tm["gemini"], tm["elevenlabs"],
+             uid, tm.get("vad", 0), tm.get("whisper", "-"), tm.get("ml", "-"), tm["llm"], tm["elevenlabs"],
              tm["total"], r["domain"], r["tone"], r["source"],
              f" =larp=> {r['larp']['text']!r}" if r.get("larp") else "", r["translation"],
              {t["match"]: t["choice"] for t in r["terms"]} or "-")
@@ -579,7 +634,7 @@ async def retry_with_next_option(uid: int, blamed: dict):
         return
     utt["rejected"].setdefault(blamed["term"], []).append(blamed["choice"])
     terms = ML.find_terms(utt["source"], utt["domain"], utt["target"], utt["rejected"])
-    terms = [t for t in terms if t["choice"]]  # a term with no options left falls back to Gemini's choice
+    terms = [t for t in terms if t["choice"]]  # a term with no options left falls back to the LLM's choice
     if [t["choice"] for t in terms] == [t["choice"] for t in utt["terms"]]:
         await broadcast({"t": "error", "id": uid, "msg": f"no other translations left for '{blamed['term']}'"})
         return

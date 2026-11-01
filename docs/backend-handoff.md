@@ -7,13 +7,13 @@ The backend and a first version of the dashboard are done. This page says what e
 ## What it does
 
 ```
-badge mic ─► voice detection ─► Whisper ─► local ML ─► Gemini ─► ElevenLabs ─► badge speaker
-           (laptop)             (OpenAI)   (laptop)   (Google)  (user's cloned voice)
+badge mic ─► voice detection ─► Whisper ─► local ML ─► Featherless ─► ElevenLabs ─► badge speaker
+           (laptop)             (OpenAI)   (laptop)   (LLM)       (user's cloned voice)
                                               └──► dashboard: transcript, field, jargon, learning curve
 ```
 
 - **Contexts (checkboxes):** Pickleball, Tennis, Computer science, Math (fields) and LARP mode (style). The backend only detects among the checked fields, and translates jargon per field ("set" → 세트 in tennis, 집합 in math).
-- **LARP mode:** drops filler words and upgrades weak phrases locally, then asks Gemini (same call) to make the speaker sound like an expert.
+- **LARP mode:** drops filler words and upgrades weak phrases locally, then asks the LLM (same call) to make the speaker sound like an expert.
 - **Learning:** 👍/👎 per sentence. 👎 on a word replays the sentence with that word's next translation; one 👎 changes the default from then on.
 - **Voice:** translations are spoken in the user's own voice, cloned once at the start (voice setup on the dashboard).
 - **Badge control:** the dashboard lists every badge online; **Connect** picks which one is used. The backend pushes it its settings (language, contexts, LARP, listening, voice) whenever they change, and shows its battery, Wi-Fi, latency, firmware and whether it confirmed the settings. Identify (blink), volume, disconnect.
@@ -35,8 +35,9 @@ badge mic ─► voice detection ─► Whisper ─► local ML ─► Gemini �
 | Looks like | Why it's on purpose |
 |---|---|
 | Embeddings via `fastembed` (ONNX), not `sentence-transformers` / PyTorch | PyTorch crashed on macOS 14 (Apple GPU backend), used 527 MB (over Render's 512 MB free tier) and is a 1.2 GB install. ONNX: same model, 250 MB, 3 ms/sentence, starts offline. |
-| Gemini only gets a short plain-text prompt, no JSON, no tone | Cheapest and fastest. Field, tone, jargon and context trimming are all done locally for free; Gemini just translates. |
-| Repeated sentences don't call Gemini or ElevenLabs | Disk cache, so rehearsing the demo costs nothing. "cached" on the dashboard means 0 ms. |
+| The LLM only gets a short plain-text prompt, no JSON, no tone | Cheapest and fastest. Field, tone, jargon and context trimming are all done locally for free; the LLM just translates. |
+| Featherless model is Mistral Small 3.2, with Mistral Nemo as fallback | Benchmarked on 12 sentences: 0 wrong-language replies, ~1.4 s. Qwen 2.5 7B/14B drifted into English/Chinese on Korean. Replies are script-checked; wrong language → fallback model. |
+| Repeated sentences don't call the LLM or ElevenLabs | Disk cache, so rehearsing the demo costs nothing. "cached" on the dashboard means 0 ms. |
 | Picks the best-scoring translation, not random (no Thompson sampling) | The live demo has to be predictable. Exploration comes from 👎. |
 | A 👎 changes only one word | Blaming every word flipped correct ones too. The dashboard lets you click the wrong word; the badge's 👎 blames the least certain one. |
 | New audio waits until the badge finishes playing + 300 ms | The badge mutes its mic while playing; overlapping audio would be cut off or re-heard. |
@@ -50,12 +51,12 @@ badge mic ─► voice detection ─► Whisper ─► local ML ─► Gemini �
 
 **Tested:** server, WebSockets, dashboard (mock and real), voice detection on real audio, local ML (field detection, jargon, LARP, learning), voice setup flow, error handling (an API failure skips one sentence and keeps listening), the ElevenLabs key (real Korean speech, 0.5 s).
 
-**Not tested yet:** OpenAI (Whisper) and Gemini with real keys, voice cloning with a real account, the badge (firmware not written yet), Render.
+**Not tested yet:** OpenAI (Whisper) with a real key, voice cloning with a real account, the badge (firmware not written yet), Render.
 
 ## To run
 
 ```bash
-cp .env.example .env                    # paste OPENAI_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY
+cp .env.example .env                    # paste OPENAI_API_KEY, FEATHERLESS_API_KEY, ELEVENLABS_API_KEY
 cd backend && pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
@@ -65,7 +66,7 @@ Dashboard: http://localhost:8000. Without keys or a badge: open `dashboard/index
 
 | Who | What |
 |---|---|
-| Everyone | OpenAI and Gemini keys in `.env`. ElevenLabs key needs **Voices → Write** permission for voice setup, and a paid plan (Starter+) for voice cloning. |
+| Everyone | OpenAI key (Whisper) in `.env`; Featherless and ElevenLabs keys are in. ElevenLabs key needs **Voices → Write** permission for voice setup, and a paid plan (Starter+) for voice cloning. |
 | A | Firmware per `docs/messages.md`. Minimum: audio + `ptt` + `fb`. For the badge panel: send `hello` (stable `id` from the MAC), `state`, answer `ping`; handle `config`, `active`, `identify`, `volume`. For Render: `wss://` with `beginSSL`. |
 | C + D | Fill `data/glossaries/<context>.json`, `data/train.jsonl`, `data/larp.json`. Have someone who reads Korean/Spanish check the translations. `data/README.md` still lists the old domains. |
 | D | Style the dashboard for the projector; plain-vs-Larpslator comparison for the demo. |

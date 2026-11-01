@@ -76,5 +76,5 @@ The exact fields of every event, with examples, are in [../docs/messages.md](../
 ## Ideas / TODO for the demo
 
 - Big fonts and high contrast for the projector (the 90-second demo script relies on the conversation, special words and learning curve being readable from the back).
-- The comparison "plain translator vs Larpslator" view from the plan isn't in the backend (it would double the Gemini calls). Easiest: hard-code the plain-translator mistakes for the demo sentences.
+- The comparison "plain translator vs Larpslator" view from the plan isn't in the backend (it would double the LLM calls). Easiest: hard-code the plain-translator mistakes for the demo sentences.
 - Show the LARP changes (`utterance.larp.changes`) more visibly when LARP is on.
