@@ -1,0 +1,22 @@
+{
+  "열": ["fever", "heat", "column"],
+  "음성": ["negative", "voice", "audio"],
+  "양성": ["positive", "benign", "both sexes"],
+  "소견": ["findings", "opinion", "view"],
+  "처방": ["prescription", "remedy", "solution"],
+  "장": ["intestine", "chapter", "chief", "market"],
+  "위": ["stomach", "above", "up"],
+  "간": ["liver", "seasoning", "between"],
+  "폐": ["lung", "nuisance"],
+  "신장": ["kidney", "height", "expansion"],
+  "수액": ["IV fluid", "sap"],
+  "주사": ["injection", "drunken behavior", "scanning"],
+  "호전": ["improvement", "belligerence"],
+  "결석": ["stone", "absence"],
+  "외래": ["outpatient", "foreign"],
+  "전이": ["metastasis", "transition", "transfer"],
+  "조직": ["tissue", "organization"],
+  "변": ["stool", "change", "side"],
+  "차트": ["medical chart", "graph", "music chart"],
+  "바이탈": ["vital signs", "vital"]
+}

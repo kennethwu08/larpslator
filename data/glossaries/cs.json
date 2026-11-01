@@ -1,0 +1,22 @@
+{
+  "배열": ["array", "arrangement", "layout"],
+  "함수": ["function"],
+  "스레드": ["thread", "yarn"],
+  "상수": ["constant", "tap water", "skilled player"],
+  "정수": ["integer", "purified water", "essence"],
+  "실수": ["real number", "mistake"],
+  "변수": ["variable", "unexpected factor"],
+  "인자": ["argument", "factor"],
+  "반환": ["return", "give back", "refund"],
+  "큐": ["queue", "cue"],
+  "힙": ["heap", "hip"],
+  "캐시": ["cache", "cash"],
+  "버그": ["bug", "insect"],
+  "열": ["column", "fever", "heat"],
+  "행": ["row", "bound for"],
+  "대입": ["assignment", "substitution", "college admission"],
+  "사전": ["dictionary", "in advance"],
+  "재귀": ["recursion", "returning"],
+  "주석": ["comment", "annotation", "tin"],
+  "소스": ["source code", "sauce"]
+}

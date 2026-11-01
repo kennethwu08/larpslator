@@ -1,0 +1,22 @@
+{
+  "실수": ["real number", "mistake"],
+  "정수": ["integer", "purified water", "essence"],
+  "상수": ["constant", "tap water", "skilled player"],
+  "근": ["root", "muscle", "approximately"],
+  "극한": ["limit", "extreme"],
+  "행렬": ["matrix", "procession", "line of people"],
+  "열": ["column", "fever", "heat"],
+  "행": ["row", "bound for"],
+  "미분": ["differentiation", "fine powder"],
+  "집합": ["set", "gathering", "assembly"],
+  "원": ["circle", "won (currency)", "wish"],
+  "변": ["side", "stool", "change"],
+  "정리": ["theorem", "organizing", "summary"],
+  "가정": ["assumption", "family", "household"],
+  "해": ["solution", "sun", "year", "harm"],
+  "수렴": ["convergence", "gathering (of opinions)"],
+  "발산": ["divergence", "release (of stress or energy)"],
+  "학회": ["academic conference", "academic society", "student club"],
+  "심사": ["review", "judging", "screening"],
+  "조교": ["teaching assistant", "drill instructor"]
+}
