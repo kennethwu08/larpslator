@@ -1,0 +1,6 @@
+# Only the static dashboard is deployed to Vercel; the backend runs on the laptop (WebSockets + local state).
+backend/
+data/
+firmware/
+docs/
+.env

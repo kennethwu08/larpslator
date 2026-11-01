@@ -11,7 +11,8 @@
  *   larp.connectBadge("AB12");              // badges: status.badges / "badges" event
  *
  * Which backend: same host when the page is served by the backend (http://<laptop>:8000),
- * else localhost:8000, or ?server=192.168.1.20:8000 to choose.
+ * else localhost:8000, or ?server=192.168.1.20:8000 to choose (remembered on this device). When the page
+ * is hosted elsewhere (Vercel), js/config.js can set the default: window.LARPSLATOR_SERVER.
  *
  * Pairing: devices other than the laptop need the pairing code. It comes from ?token=... on the URL
  * (the dashboard's "Pair Another Device" link) and is remembered on this device. A wrong or missing
@@ -39,9 +40,16 @@
     } catch { return fromUrl || ""; }
   }
 
+  const SERVER_KEY = "larpslator-server";
+  const bareHost = s => s.trim().replace(/^\w+:\/\//, "").replace(/\/+$/, "");
   function serverAddress() {
     const fromUrl = new URLSearchParams(location.search).get("server");
-    if (fromUrl) return fromUrl.replace(/^\w+:\/\//, "").replace(/\/$/, "");
+    try {
+      if (fromUrl) localStorage.setItem(SERVER_KEY, bareHost(fromUrl));
+      const saved = fromUrl || localStorage.getItem(SERVER_KEY);
+      if (saved) return bareHost(saved);
+    } catch { if (fromUrl) return bareHost(fromUrl); }
+    if (window.LARPSLATOR_SERVER) return bareHost(window.LARPSLATOR_SERVER);  // js/config.js (set on Vercel)
     if (location.protocol.startsWith("http")) return location.host;
     return "localhost:8000";  // opened as a file
   }

@@ -154,7 +154,7 @@ cloudflared tunnel --url http://localhost:8000      # prints https://<random>.tr
 - Open that https address on any device: the dashboard, the WebSockets (`wss://`) and the microphone work through it.
 - Devices coming through the tunnel need the pairing code (`?token=<code>`), even though the tunnel connects from the laptop itself. Set `PUBLIC_URL=https://<random>.trycloudflare.com` in `.env` so Session → Pair Another Device shows tunnel links.
 - A badge connecting through the tunnel needs TLS (`wss://…/ws/badge?token=<code>`, `beginSSL` in the firmware); on the same Wi-Fi as the laptop it can use `ws://<laptop-ip>:8000/ws/badge?token=<code>`.
-- If the dashboard is hosted separately (e.g. on Vercel, serving only the `dashboard/` folder), open it with `?server=<random>.trycloudflare.com` so it talks to the laptop. Otherwise the dashboard always uses the address it was loaded from.
+- If the dashboard is hosted separately (e.g. on Vercel, serving only the `dashboard/` folder), open it with `?server=<random>.trycloudflare.com` (remembered on that device) or set `LARPSLATOR_SERVER` in the Vercel project, so it talks to the laptop. See [../dashboard/README.md](../dashboard/README.md#vercel). Otherwise the dashboard always uses the address it was loaded from.
 
 ## Sentry
 
