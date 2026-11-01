@@ -1,0 +1,23 @@
+{
+  "status": "draft_data_ready; language not exposed by current application",
+  "glossaries": [
+    {
+      "domain": "cs",
+      "Tamil_terms_added": 15,
+      "existing_terms_preserved": true
+    },
+    {
+      "domain": "tennis",
+      "Tamil_terms_added": 15,
+      "existing_terms_preserved": true
+    },
+    {
+      "domain": "pickleball",
+      "Tamil_terms_added": 15,
+      "existing_terms_preserved": true
+    }
+  ],
+  "review": "Tamil terminology remains assistant-authored and pending human review",
+  "backend_change_required": "Backend owner must add Tamil to supported language choices and verify translation/voice support. Restart backend to reload glossary data.",
+  "protected_files_changed": false
+}

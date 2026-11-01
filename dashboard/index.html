@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#f5f4f0">
+<meta name="theme-color" content="#f7f8f2">
 <meta name="description" content="Larpslator translates the conversation, understands the context, and sounds like you.">
 <title>Larpslator — Every word, in context.</title>
 <link rel="stylesheet" href="css/style.css">
@@ -13,6 +13,7 @@
 <header class="topbar">
   <a href="#conversation" class="brand" aria-label="Larpslator home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>larpslator<span class="brand-dot">.</span></a>
   <div class="product-tag">A little context changes everything.</div>
+  <a class="event-credit" href="https://www.larphacks.ca/" target="_blank" rel="noopener noreferrer" aria-label="Built at LarpHacks — official event website"><span>BUILT AT</span><img src="css/larphacks-wordmark.webp" alt="LarpHacks — a DevFest event" width="108" height="29"></a>
   <div class="top-status"><span id="pill-mock" class="pill warn" hidden>Demo · simulated data</span><span id="pill-server" class="pill">Connecting…</span><span id="pill-badge" class="pill">Badge offline</span></div>
   <button id="present" class="icon-button" title="Toggle presentation view" aria-label="Toggle presentation view" aria-pressed="false">↗</button>
 </header>
@@ -72,7 +73,7 @@
         <section class="insight-card learning-card"><div class="panel-heading"><h2>Better with you</h2><span class="card-number">03</span></div><div class="accuracy"><span id="accuracy">—</span><span>positive<br>jargon feedback</span></div><div class="chart"><canvas id="curve" role="img" aria-label="Rolling positive jargon feedback rate"></canvas></div><div class="learning-footer"><span id="accuracy-meta">Your feedback starts the curve.</span><button id="reset" class="text-button" disabled>Reset ↺</button></div></section>
       </aside>
     </div>
-    <footer class="main-footer"><span>BUILT FOR REAL CONVERSATIONS.</span><span>Larpslator · LarpHacks 2026</span></footer>
+    <footer class="main-footer"><span>BUILT FOR REAL CONVERSATIONS.</span><a class="event-footer" href="https://www.larphacks.ca/" target="_blank" rel="noopener noreferrer"><span>BUILT AT</span><img src="css/larphacks-wordmark.webp" alt="LarpHacks" width="95" height="25"></a></footer>
   </main>
 </div>
 <dialog id="voice-dialog" aria-labelledby="voice-title">

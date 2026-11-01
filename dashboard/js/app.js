@@ -297,12 +297,12 @@
   }
   const chart = typeof Chart !== "undefined" ? new Chart($("curve"), {
     type: "line",
-    data: { labels: [], datasets: [{ data: [], borderColor: "#a58bb9", backgroundColor: "rgba(165,139,185,.10)", fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: "#bca5cd", pointBorderWidth: 0, borderWidth: 2 }] },
+    data: { labels: [], datasets: [{ data: [], borderColor: "#729b60", backgroundColor: "rgba(100,150,70,.12)", fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: "#8daf70", pointBorderWidth: 0, borderWidth: 2 }] },
     options: {
       animation: false, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => Math.round(ctx.parsed.y * 100) + "% positive feedback" } } },
       scales: {
-        y: { min: 0, max: 1, ticks: { stepSize: .5, color: "#b3a3bf", font: { size: 8 }, callback: value => Math.round(value * 100) + "%" }, border: { display: false }, grid: { color: "#dfd6e7" } },
+        y: { min: 0, max: 1, ticks: { stepSize: .5, color: "#8b9c7e", font: { size: 8 }, callback: value => Math.round(value * 100) + "%" }, border: { display: false }, grid: { color: "#d3dfc8" } },
         x: { ticks: { display: false }, border: { display: false }, grid: { display: false } }
       }
     }

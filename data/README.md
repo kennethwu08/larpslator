@@ -94,3 +94,16 @@ data/eval-ta.jsonl. Human review has not occurred. Academic sources provide cont
 they do not validate the authored translations. data/domains-ta.json proposes labels
 for the ML teammate; no classifier was trained. Application code changes were undone
 so this contribution remains research-only.
+
+## Tamil application glossary handoff
+
+Tamil draft choices have now been added to the contract-compatible
+glossaries/cs.json, tennis.json, and pickleball.json files under the exact
+language key "Tamil". Each domain has 15 Tamil terms. Existing entries and
+existing Korean choices were preserved. Standalone selected/*-ta.json files
+remain as research exports.
+
+This is DATA readiness only. Tamil is not in the current backend or mock
+language selector. Only the backend owner should enable the target and verify
+translation and speech output. Restart the backend after loading new glossary
+data. All Tamil wording still needs a Tamil-speaking review.
