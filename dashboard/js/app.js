@@ -378,4 +378,173 @@
       toast("Learning reset. A fresh start.");
     }
   };
+  // ------------------------------------------------------------ signal studio interactions
+  const emptyFeed = $("utterances").innerHTML;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let ambientPaused = reducedMotion.matches;
+  const machine = $("signal-machine");
+  const canvas = $("signal-canvas");
+  const context2d = canvas.getContext("2d");
+  let canvasWidth = 1, canvasHeight = 1, frame = 0, visible = true, lastDraw = 0;
+  let pointer = { x: 0, y: 0 };
+  const dots = Array.from({ length: 130 }, (_, i) => ({
+    phase: i * 2.399963, radius: .22 + ((i * 37) % 100) / 220,
+    size: i % 11 === 0 ? 2 : .7
+  }));
+  function sizeCanvas() {
+    const rect = machine.getBoundingClientRect();
+    canvasWidth = rect.width; canvasHeight = rect.height;
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(canvasWidth * ratio);
+    canvas.height = Math.round(canvasHeight * ratio);
+    context2d?.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+  function drawSignal(now) {
+    if (!context2d) return;
+    context2d.clearRect(0, 0, canvasWidth, canvasHeight);
+    const t = ambientPaused || reducedMotion.matches ? 0 : now / 6500;
+    const cx = canvasWidth / 2 + pointer.x * 8;
+    const cy = canvasHeight / 2 + pointer.y * 8;
+    const radius = Math.min(canvasWidth, canvasHeight) * .43;
+    const pulse = document.body.classList.contains("is-listening") ? 1.08 : 1;
+    for (const dot of dots) {
+      const angle = dot.phase + t * (dot.size > 1 ? -.4 : .3);
+      const x = cx + Math.cos(angle) * radius * dot.radius * 1.9 * pulse;
+      const y = cy + Math.sin(angle) * radius * dot.radius * 1.4 * pulse;
+      context2d.beginPath();
+      context2d.arc(x, y, dot.size, 0, Math.PI * 2);
+      context2d.fillStyle = dot.size > 1 ? "#c5fa66" : "#739e5966";
+      context2d.fill();
+      if (dot.size > 1) {
+        context2d.strokeStyle = "#c5fa6614";
+        context2d.beginPath(); context2d.moveTo(cx, cy); context2d.lineTo(x, y); context2d.stroke();
+      }
+    }
+    for (let ring = 0; ring < 3; ring++) {
+      const distance = ((t * .13 + ring / 3) % 1) * radius;
+      context2d.strokeStyle = "rgba(184,234,114," + (.16 * (1 - distance / radius)) + ")";
+      context2d.lineWidth = .7; context2d.beginPath();
+      context2d.ellipse(cx, cy, distance, distance * .72, -.4, 0, Math.PI * 2);
+      context2d.stroke();
+    }
+  }
+  function animateSignal(now) {
+    frame = 0;
+    if (!visible || document.hidden) return;
+    if (now - lastDraw >= 45) { drawSignal(now); lastDraw = now; }
+    if (!ambientPaused) frame = requestAnimationFrame(animateSignal);
+  }
+  function refreshMotion() {
+    document.body.classList.toggle("motion-paused", ambientPaused);
+    $("motion-toggle").textContent = ambientPaused ? "Play motion ▷" : "Pause motion Ⅱ";
+    $("motion-toggle").setAttribute("aria-pressed", String(!ambientPaused));
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+    drawSignal(performance.now());
+    if (!ambientPaused && visible && !document.hidden) frame = requestAnimationFrame(animateSignal);
+  }
+  new ResizeObserver(() => { sizeCanvas(); drawSignal(performance.now()); }).observe(machine);
+  new IntersectionObserver(entries => { visible = entries[0].isIntersecting; refreshMotion(); }).observe(machine);
+  document.addEventListener("visibilitychange", refreshMotion);
+  window.addEventListener("pagehide", () => { if (frame) cancelAnimationFrame(frame); });
+  $("motion-toggle").onclick = () => { ambientPaused = !ambientPaused; refreshMotion(); };
+  reducedMotion.addEventListener("change", e => { ambientPaused = e.matches; refreshMotion(); });
+  machine.addEventListener("pointermove", event => {
+    if (ambientPaused || reducedMotion.matches || event.pointerType === "touch") return;
+    const box = machine.getBoundingClientRect();
+    pointer = { x: (event.clientX - box.left) / box.width - .5, y: (event.clientY - box.top) / box.height - .5 };
+    machine.style.setProperty("--tilt-x", -pointer.y * 8 + "deg");
+    machine.style.setProperty("--tilt-y", pointer.x * 8 + "deg");
+  });
+  machine.addEventListener("pointerleave", () => {
+    pointer = { x: 0, y: 0 };
+    machine.style.setProperty("--tilt-x", "0deg"); machine.style.setProperty("--tilt-y", "0deg");
+  });
+  sizeCanvas(); refreshMotion();
+
+  const wordWorlds = {
+    tennis: { word: "set", meaning: "A chapter of the match.", example: "“She won the first set.”", orbit: "a round of tennis" },
+    math: { word: "set", meaning: "A collection of things.", example: "“Let A be a set of integers.”", orbit: "a mathematical collection" },
+    cs: { word: "kernel", meaning: "The core of your operating system.", example: "“The kernel schedules the thread.”", orbit: "the operating system core" },
+    pickleball: { word: "kitchen", meaning: "The non-volley zone.", example: "“Wait for the bounce in the kitchen.”", orbit: "the non-volley zone" }
+  };
+  document.querySelectorAll(".lab-context").forEach(button => {
+    button.onclick = () => {
+      const world = wordWorlds[button.dataset.demo];
+      document.querySelectorAll(".lab-context").forEach(other => {
+        const active = other === button; other.classList.toggle("active", active); other.setAttribute("aria-pressed", String(active));
+      });
+      $("lab-word").textContent = world.word;
+      $("lab-meaning").textContent = world.meaning;
+      $("lab-example").textContent = world.example;
+      $("orbit-source").textContent = "“" + world.word + "”";
+      $("orbit-meaning").textContent = world.orbit;
+      const result = document.querySelector(".lab-result");
+      result.classList.remove("switching");
+      void result.offsetWidth;
+      result.classList.add("switching");
+    };
+  });
+  $("explore-meaning").onclick = () => {
+    $("meaning-lab").scrollIntoView({ behavior: reducedMotion.matches ? "instant" : "smooth", block: "center" });
+    document.querySelector(".lab-context.active").focus({ preventScroll: true });
+  };
+  $("hero-start").onclick = () => {
+    if (status && !status.listening) larp.setListening(true);
+    document.querySelector(".studio-heading").scrollIntoView({ behavior: reducedMotion.matches ? "instant" : "smooth", block: "start" });
+  };
+  larp.on("status", m => {
+    $("hero-start").disabled = false;
+    $("hero-start").innerHTML = (m.listening ? "Step into the live studio" : "Enter the conversation") + "<span>↗</span>";
+    $("machine-status").textContent = m.listening ? (larp.mock ? "DEMO SIGNAL ACTIVE" : "SESSION LISTENING") : "READY TO CONNECT";
+  });
+  larp.on("close", () => {
+    $("hero-start").disabled = true;
+    $("machine-status").textContent = "SIGNAL INTERRUPTED";
+  });
+  function syncViewButtons() {
+    const on = document.body.classList.contains("presentation");
+    $("view-stage").classList.toggle("active", on); $("view-stage").setAttribute("aria-pressed", String(on));
+    $("view-studio").classList.toggle("active", !on); $("view-studio").setAttribute("aria-pressed", String(!on));
+  }
+  $("present").addEventListener("click", syncViewButtons);
+  $("view-stage").onclick = () => { if (!document.body.classList.contains("presentation")) $("present").click(); };
+  $("view-studio").onclick = () => { if (document.body.classList.contains("presentation")) $("present").click(); };
+  $("toggle-settings").onclick = () => {
+    const on = document.body.classList.toggle("settings-open");
+    $("toggle-settings").setAttribute("aria-expanded", String(on));
+    $("toggle-settings").setAttribute("aria-label", on ? "Close session settings" : "Open session settings");
+  };
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && document.body.classList.contains("settings-open")) {
+      document.body.classList.remove("settings-open");
+      $("toggle-settings").setAttribute("aria-expanded", "false");
+      $("toggle-settings").setAttribute("aria-label", "Open session settings");
+      $("toggle-settings").focus();
+    }
+  });
+  $("copy-latest").onclick = async () => {
+    const current = utterances.get(latestId);
+    if (!current) return;
+    try { await navigator.clipboard.writeText(current.translation); toast("Latest translation copied."); }
+    catch (_) { toast("Select the translation text to copy it."); }
+  };
+  larp.on("utterance", () => { $("copy-latest").disabled = !utterances.has(latestId); });
+  $("clear-view").onclick = () => {
+    if (!cards.size) { toast("A fresh canvas. Your next sentence will appear here."); return; }
+    cards.clear(); utterances.clear(); latestId = null;
+    $("utterances").innerHTML = emptyFeed;
+    $("utterance-count").textContent = "0";
+    $("copy-latest").disabled = true;
+    $("fields").innerHTML = '<div class="waiting-state">Waiting for the next sentence.<span>⌁</span></div>';
+    $("terms").innerHTML = '<p class="muted small">Your next special words will appear here.</p>';
+    toast("View cleared. Your learned choices are kept.");
+  };
+
+  $("focus-session").onclick = () => {
+    const focused = document.body.classList.toggle("session-focused");
+    $("focus-session").setAttribute("aria-pressed", String(focused));
+    $("focus-session").textContent = focused ? "Show the whole studio ↙" : "Focus on conversation ↗";
+    document.querySelector(".studio-heading").scrollIntoView({behavior: "instant", block: "start"});
+  };
 })();

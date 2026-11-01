@@ -3,25 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#f7f8f2">
+<meta name="theme-color" content="#071c17">
 <meta name="description" content="Larpslator translates the conversation, understands the context, and sounds like you.">
-<title>Larpslator — Every word, in context.</title>
-<link rel="stylesheet" href="css/style.css">
+<title>Larpslator — Say it. Mean it.</title>
+<link rel="stylesheet" href="css/style.css?v=studio-3">
 </head>
-<body>
+<body class="edition-three">
 <a class="skip-link" href="#conversation">Skip to conversation</a>
 <header class="topbar">
   <a href="#conversation" class="brand" aria-label="Larpslator home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>larpslator<span class="brand-dot">.</span></a>
-  <div class="product-tag">A little context changes everything.</div>
+  <div class="product-tag">WORDS CHANGE. YOU DON’T.</div>
   <a class="event-credit" href="https://www.larphacks.ca/" target="_blank" rel="noopener noreferrer" aria-label="Built at LarpHacks — official event website"><span>BUILT AT</span><img src="css/larphacks-wordmark.webp" alt="LarpHacks — a DevFest event" width="108" height="29"></a>
   <div class="top-status"><span id="pill-mock" class="pill warn" hidden>Demo · simulated data</span><span id="pill-server" class="pill">Connecting…</span><span id="pill-badge" class="pill">Badge offline</span></div>
+  <button id="toggle-settings" class="icon-button mobile-settings" aria-label="Open session settings" aria-expanded="false">☷</button>
   <button id="present" class="icon-button" title="Toggle presentation view" aria-label="Toggle presentation view" aria-pressed="false">↗</button>
 </header>
 <div class="workspace">
   <aside class="sidebar" aria-label="Session settings">
     <div class="session-label"><span class="tiny-dot"></span> SESSION STUDIO <span class="session-number">01</span></div>
-    <h2 class="sidebar-title">Make yourself<br>understood.</h2>
-    <p class="sidebar-intro">Your words. The right meaning.<br>Still unmistakably you.</p>
+    <h2 class="sidebar-title">YOUR<br>FREQUENCY.</h2>
+    <p class="sidebar-intro">Tune the context.<br>Keep your identity.</p>
     <section class="settings-section">
       <div class="section-heading"><h3>01 / Language</h3><span class="subtle-icon">文 A</span></div>
       <label class="input-label" for="lang">Translate into</label>
@@ -58,14 +59,36 @@
     <div class="sidebar-footer"><span class="badge-drawing" aria-hidden="true">⌁</span><div>Small badge.<br><strong>Bigger conversations.</strong></div><span class="footer-arrow">↗</span></div>
   </aside>
   <main id="conversation" class="main">
-    <div class="page-heading"><div><div class="eyebrow">THE CONVERSATION, CONNECTED</div><h1>Every word.<br><span>In context.</span></h1></div><div class="heading-note"><span class="spark">✳</span><p>For the jargon.<br>The nuance.<br>The way <em>you</em> say it.</p></div></div>
+    <section class="signal-hero" aria-labelledby="signal-title">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="radar-dot"></span> A SMALL BADGE. A WORLD OF CONNECTION.</div>
+        <h1 id="signal-title">BEYOND<br><span>WORDS.</span><span class="headline-star" aria-hidden="true">✳</span></h1>
+        <p class="hero-description">Your words. Your world. Your voice.<br><em>Let the meaning travel.</em></p>
+        <div class="hero-actions"><button id="hero-start" class="launch-button" disabled>Enter the conversation <span>↗</span></button><button id="explore-meaning" class="explore-button">Play with context <span>↓</span></button></div>
+        <div class="hero-proof"><span>01 / HEAR</span><i>→</i><span>02 / UNDERSTAND</span><i>→</i><span>03 / CONNECT</span></div>
+      </div>
+      <div class="signal-machine" id="signal-machine">
+        <div class="machine-heading"><span><i></i> SIGNAL VISUALIZER</span><button id="motion-toggle" aria-pressed="true" title="Pause ambient animation">Pause motion Ⅱ</button></div>
+        <canvas id="signal-canvas" aria-hidden="true"></canvas>
+        <div class="machine-orbit orbit-one" aria-hidden="true"></div><div class="machine-orbit orbit-two" aria-hidden="true"></div>
+        <div class="machine-core" aria-hidden="true"><span class="core-wave"><i></i><i></i><i></i><i></i><i></i></span><span class="core-caption">LARP / 01</span></div>
+        <div class="orbit-word word-one" id="orbit-source">“set”</div><div class="orbit-word word-two" id="orbit-meaning">a round of tennis</div>
+        <div class="machine-coordinate coord-one" aria-hidden="true">IN / MEANING</div><div class="machine-coordinate coord-two" aria-hidden="true">OUT / UNDERSTANDING</div>
+        <div class="machine-bottom"><span id="machine-status">READY TO CONNECT</span><span>AMBIENT VISUAL · NOT MIC LEVELS</span></div>
+      </div>
+    </section>
+    <section class="meaning-lab" id="meaning-lab" aria-labelledby="lab-title">
+      <div class="lab-top"><div><span class="eyebrow">THE SAME WORD. A DIFFERENT WORLD.</span><h2 id="lab-title">One word. Four different worlds.</h2></div><span class="lab-illustration">Interactive illustration / not a live translation</span></div>
+      <div class="lab-layout"><div class="lab-controls" role="group" aria-label="Explore a word in different contexts"><button class="lab-context active" data-demo="tennis" aria-pressed="true">◉ Tennis</button><button class="lab-context" data-demo="math" aria-pressed="false">∑ Math</button><button class="lab-context" data-demo="cs" aria-pressed="false">⌘ Computer science</button><button class="lab-context" data-demo="pickleball" aria-pressed="false">◒ Pickleball</button></div><div class="lab-result" aria-live="polite"><span class="lab-word" id="lab-word">set</span><span class="lab-arrow" aria-hidden="true">↗</span><div><strong id="lab-meaning">A chapter of the match.</strong><p id="lab-example">“She won the first set.”</p></div></div></div>
+    </section>
+    <div class="studio-heading"><button id="focus-session" class="focus-session" aria-pressed="false">Focus on conversation ↗</button><div><span class="eyebrow">YOUR CONVERSATION, IN FULL COLOR</span><h2>The live studio<span>.</span></h2></div><div class="view-switch" role="group" aria-label="Dashboard layout"><button id="view-studio" class="active" aria-pressed="true">Studio</button><button id="view-stage" aria-pressed="false">Stage ↗</button></div></div>
     <section class="live-console" aria-label="Listening controls">
       <div class="live-status"><div class="waveform" id="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><strong id="session-state">Getting connected</strong><p id="session-hint">Your conversation will appear here.</p></div></div>
       <button id="listen" class="listen off" disabled><span class="listen-symbol">●</span><span id="listen-label">Start listening</span><span class="listen-key">↗</span></button>
     </section>
     <div class="dashboard-grid">
       <section class="conversation-panel" aria-labelledby="conversation-heading">
-        <div class="panel-heading"><h2 id="conversation-heading">Live conversation <span id="utterance-count" class="count-badge">0</span></h2><span class="live-label"><i></i><span id="feed-label">Ready when you are</span></span></div>
+        <div class="panel-heading"><h2 id="conversation-heading">Live conversation <span id="utterance-count" class="count-badge">0</span></h2><div class="feed-tools"><button id="copy-latest" class="text-button" disabled>Copy latest ↗</button><button id="clear-view" class="text-button">Clear view ↺</button><span class="live-label"><i></i><span id="feed-label">Ready when you are</span></span></div></div>
         <div id="errors" role="alert"></div>
         <div id="utterances" aria-live="polite" aria-relevant="additions text">
           <div class="empty"><div class="empty-symbol" aria-hidden="true">“</div><h3>Great conversations start<br>with a little understanding.</h3><p>Press Start listening. Speak naturally.<br>We'll take care of the context.</p><div class="empty-chips"><span>Speak</span><i>→</i><span>Understand</span><i>→</i><span>Connect</span></div></div>
@@ -113,6 +136,6 @@
 <script src="vendor/chart.umd.js"></script>
 <script src="js/api.js"></script>
 <script src="js/mock.js"></script>
-<script src="js/app.js"></script>
+<script src="js/app.js?v=studio-3"></script>
 </body>
 </html>
