@@ -14,5 +14,7 @@ Regular translators don't know the context, so technical words come out wrong: "
 ## How it works
 Badge (ESP32) → speech-to-text (Whisper) → field detection and jargon choice (local ML, free) → translation (Gemini) → ElevenLabs voice → back to the badge, with everything shown live on the dashboard. See [backend/README.md](backend/README.md) to run it.
 
+**Team: read [docs/backend-handoff.md](docs/backend-handoff.md) first:** what's built, who owns what, and what not to change.
+
 Built at LarpHacks 2026 (Toronto).
 By Bernard Kim, Justin Cen, Sharvesh Kandavel and Kenneth Wu

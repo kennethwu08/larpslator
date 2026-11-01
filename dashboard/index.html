@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larpslator</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <h1>Larpslator</h1>
+  <button id="listen" class="listen off" disabled>Listen</button>
+  <label class="lang">Translate to <select id="lang"></select></label>
+  <div class="pills">
+    <span id="pill-mock" class="pill warn" hidden>MOCK DATA</span>
+    <span id="pill-server" class="pill">server: connecting…</span>
+    <span id="pill-badge" class="pill">badge: offline</span>
+    <span id="pill-voice" class="pill">voice: …</span>
+  </div>
+</header>
+
+<main class="grid">
+  <!-- Left: setup -->
+  <div class="col">
+    <section class="card" id="voice-card">
+      <h2>Your voice</h2>
+      <p id="voice-state" class="muted"></p>
+      <details id="voice-setup">
+        <summary id="voice-summary">Set up your voice</summary>
+        <p class="muted">Read this out loud at your normal pace, somewhere quiet (about 60 s, at least 20 s of speech):</p>
+        <p class="script">Hi, I'm setting up my voice for Larpslator. I'll read this out loud at a normal pace, the way I usually talk.
+          On weekends I play pickleball and tennis with friends; we argue about the kitchen line, the score, and whose serve was out.
+          During the week I study computer science and math: algorithms, proofs, matrices, and the occasional bug that takes all night to find.
+          Honestly, the best part of any day is a good conversation, a quick laugh, and maybe a coffee afterwards.
+          Thanks for listening. This should be enough for the voice to sound like me.</p>
+        <input id="voice-name" placeholder="Your name">
+        <div class="row">
+          <button id="rec-badge">Record on badge</button>
+          <button id="rec-browser">Record in browser</button>
+        </div>
+        <div class="row">
+          <button id="rec-stop" disabled>Stop &amp; create voice</button>
+          <button id="rec-cancel" disabled>Cancel</button>
+        </div>
+        <p id="rec-progress" class="muted"></p>
+      </details>
+      <button id="voice-test">▶ Play test</button>
+      <audio id="voice-audio"></audio>
+    </section>
+
+    <section class="card">
+      <h2>Contexts</h2>
+      <div id="contexts"></div>
+      <p class="muted small">Checked fields are the only ones the backend can detect. One checked = always that field.</p>
+    </section>
+
+    <section class="card">
+      <h2>Meeting notes</h2>
+      <select id="packs"></select>
+      <input id="notes-name" placeholder="Name (e.g. Tennis club meeting)">
+      <textarea id="notes" placeholder="One item per line: names, jargon, agenda…"></textarea>
+      <button id="notes-save">Save notes</button>
+      <p id="notes-status" class="muted small"></p>
+    </section>
+  </div>
+
+  <!-- Center: the conversation -->
+  <section class="card conversation">
+    <h2>Live conversation</h2>
+    <div id="errors"></div>
+    <div id="utterances"><p class="muted empty">Press Listen and start talking.</p></div>
+  </section>
+
+  <!-- Right: what the backend is thinking -->
+  <div class="col">
+    <section class="card">
+      <h2>Detected field</h2>
+      <div id="fields"><p class="muted">Waiting for the first sentence…</p></div>
+    </section>
+
+    <section class="card">
+      <h2>Special words</h2>
+      <div id="terms"><p class="muted">Jargon in the latest sentence shows here.</p></div>
+      <p class="muted small">Click a word that's wrong to try its next translation.</p>
+    </section>
+
+    <section class="card">
+      <h2>Learning curve</h2>
+      <div class="accuracy"><span id="accuracy">–</span><span id="accuracy-meta" class="muted small">No feedback yet</span></div>
+      <div class="chart"><canvas id="curve"></canvas></div>
+      <button id="reset">Reset learning</button>
+    </section>
+  </div>
+</main>
+
+<!-- Order matters: api.js defines Larp, mock.js builds on it, app.js uses both. -->
+<script src="vendor/chart.umd.js"></script>
+<script src="js/api.js"></script>
+<script src="js/mock.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

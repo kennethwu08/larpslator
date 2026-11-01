@@ -23,7 +23,9 @@ from dotenv import load_dotenv
 from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from google import genai
 from google.genai import types
 from openai import OpenAI
@@ -426,6 +428,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+# The dashboard may be opened from another origin (a file, a dev server); let it call /api.
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+DASHBOARD_DIR = HERE.parent / "dashboard"
 
 
 async def broadcast(msg: dict):
@@ -705,8 +710,9 @@ async def test_voice(text: str = ""):
     return Response(pcm_to_wav(pcm), media_type="audio/wav")
 
 
-@app.get("/")
-async def dashboard():
+@app.get("/reference")
+async def reference_dashboard():
+    """The backend's own minimal test page. The team's app (dashboard/) is served at /."""
     return FileResponse(HERE / "static" / "dashboard.html")
 
 
@@ -754,3 +760,10 @@ async def dashboard_ws(ws: WebSocket):
         pass
     finally:
         state.dashboards.discard(ws)
+
+
+# Last, so the routes above win: the team's dashboard app at /, or the reference page if it's missing.
+if (DASHBOARD_DIR / "index.html").exists():
+    app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
+else:
+    app.add_api_route("/", reference_dashboard)

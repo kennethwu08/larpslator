@@ -33,7 +33,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 The first start downloads the `all-MiniLM-L6-v2` model (~90 MB, into `backend/.models/`), so do it before you're on venue Wi-Fi. After that the ML starts without internet. It runs on ONNX (`fastembed`), not PyTorch: ~3 ms per sentence and ~250 MB of RAM for the whole server.
 
-- Dashboard: http://localhost:8000
+- Dashboard: http://localhost:8000 (the team's app in `dashboard/`; the backend's minimal test page is at `/reference`)
 - Badge connects to `ws://<laptop-ip>:8000/ws/badge` (find the IP with `ipconfig getifaddr en0` on macOS). The laptop and badge must be on the same network (the phone hotspot).
 
 ## Test without the badge
