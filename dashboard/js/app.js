@@ -28,12 +28,12 @@
     $("listen").disabled = false;
     $("listen").textContent = m.listening ? "Stop" : "Listen";
     $("listen").className = `listen ${m.listening ? "on" : "off"}`;
-    setPill("pill-badge", m.badge ? "badge: connected" : "badge: offline", m.badge ? "on" : "");
 
     const lang = $("lang");
     if (lang.options.length !== m.languages.length) lang.innerHTML = m.languages.map(l => `<option>${esc(l)}</option>`).join("");
     lang.value = m.target;
 
+    renderBadges(m.badges);
     renderContexts(m.contexts);
     renderVoice(m.voice, m.voice_recording);
     renderPacks(m.packs, m.context_name);
@@ -42,6 +42,51 @@
 
   $("listen").onclick = () => larp.setListening(!status.listening);
   $("lang").onchange = e => larp.setLanguage(e.target.value);
+
+  // ------------------------------------------------------------ badge
+  const wifi = rssi => rssi == null ? "?" : rssi > -60 ? "strong" : rssi > -72 ? "ok" : "weak";
+  larp.on("badges", m => { if (status) { status.badges = m.badges; renderBadges(m.badges); } });  // heartbeat refresh
+
+  function renderBadges(badges) {
+    const active = badges.find(b => b.active);
+    setPill("pill-badge", active ? `badge: ${active.name || active.id}` : badges.length ? "badge: not connected" : "badge: offline",
+      active ? "on" : "bad");
+    $("badge-url").textContent = status.badge_url;
+    if (!badges.length && !$("badge-help").dataset.touched) $("badge-help").open = true;
+
+    $("badge-list").innerHTML = badges.length ? badges.map(b => `
+      <div class="badge-row">
+        <div><div class="name">${esc(b.name || b.id)}</div>
+          <div class="stats">${b.battery != null ? `🔋 ${b.battery}%` : ""} · Wi-Fi ${wifi(b.rssi)}</div></div>
+        <button data-id="${esc(b.id)}" class="${b.active ? "connected" : ""}" ${b.active ? "disabled" : ""}>
+          ${b.active ? "Connected" : "Connect"}</button>
+      </div>`).join("") : `<p class="muted">No badge online.</p>`;
+    $("badge-list").querySelectorAll("button").forEach(btn => btn.onclick = () => larp.connectBadge(btn.dataset.id));
+
+    $("badge-detail").hidden = !active;
+    if (!active) return;
+    const cfg = status.badge_config;
+    const fields = status.contexts.filter(c => cfg.fields.includes(c.id)).map(c => c.label);
+    const rows = [
+      ["Language", cfg.target],
+      ["Contexts", fields.join(", ") || "none (no jargon)"],
+      ["LARP mode", cfg.larp ? "on" : "off"],
+      ["Listening", cfg.voice_setup ? "voice setup" : cfg.listening ? "yes" : "no"],
+      ["Voice", cfg.voice || "stock voice"],
+      ["Battery", active.battery != null ? `${active.battery}%` : "not reported"],
+      ["Wi-Fi", active.rssi != null ? `${wifi(active.rssi)} (${active.rssi} dBm)` : "not reported"],
+      ["Latency", active.rtt_ms != null ? `${active.rtt_ms} ms` : "not reported"],
+      ["Firmware", active.fw || "not reported"],
+      ["Address", active.ip],
+      ["Settings", active.config_synced ? `<span class="ok">synced ✓</span>` : "sent (badge hasn't confirmed)"],
+    ];
+    $("badge-info").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${k === "Settings" ? v : esc(v)}</dd>`).join("");
+    if (document.activeElement !== $("badge-volume")) $("badge-volume").value = active.volume ?? 70;
+    $("badge-volume").onchange = e => larp.setBadgeVolume(active.id, +e.target.value);
+    $("badge-identify").onclick = () => larp.identifyBadge(active.id);
+  }
+  $("badge-disconnect").onclick = () => larp.disconnectBadge();
+  $("badge-help").addEventListener("toggle", () => $("badge-help").dataset.touched = "1");
 
   // ------------------------------------------------------------ contexts (checkboxes)
   function renderContexts(contexts) {

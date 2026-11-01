@@ -23,6 +23,27 @@
 <main class="grid">
   <!-- Left: setup -->
   <div class="col">
+    <section class="card" id="badge-card">
+      <h2>Badge</h2>
+      <div id="badge-list"></div>
+      <div id="badge-detail" hidden>
+        <dl id="badge-info" class="info"></dl>
+        <label class="volume">Volume <input id="badge-volume" type="range" min="0" max="100" step="5"></label>
+        <div class="row">
+          <button id="badge-identify" title="Blink the badge's LED so you can find it">Identify</button>
+          <button id="badge-disconnect">Disconnect</button>
+        </div>
+      </div>
+      <details id="badge-help">
+        <summary>How to connect a badge</summary>
+        <ol class="small">
+          <li>Laptop and badge on the same Wi-Fi (the phone hotspot).</li>
+          <li>In the badge's <code>config.h</code>, set the server to:<br><code id="badge-url">…</code></li>
+          <li>Turn the badge on. It appears above; press <b>Connect</b>.</li>
+        </ol>
+      </details>
+    </section>
+
     <section class="card" id="voice-card">
       <h2>Your voice</h2>
       <p id="voice-state" class="muted"></p>

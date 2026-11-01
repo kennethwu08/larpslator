@@ -7,12 +7,14 @@ all run locally (ml.py), so they cost nothing.
 Run:  uvicorn main:app --host 0.0.0.0 --port 8000   (from the backend/ folder)
 """
 import asyncio
+import contextlib
 import hashlib
 import io
 import json
 import logging
 import os
 import re
+import socket
 import time
 import wave
 from contextlib import asynccontextmanager
@@ -380,6 +382,52 @@ def log_feedback(val: int, utt: dict | None):
     log.info("feedback %+d on utterance %s", val, entry["id"])
 
 
+# ---------------------------------------------------------------- badges
+BADGE_PING_S = 5           # heartbeat: latency + battery refresh; dead sockets are closed by uvicorn's own pings
+BADGE_INFO_KEYS = {"name", "fw", "battery", "rssi", "volume", "playing", "muted", "ip", "mac", "uptime_s", "free_heap"}
+
+
+def lan_ip() -> str:
+    """This laptop's address on the current network (hotspot), for the badge's config.h."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))  # sends nothing; just picks the outgoing interface
+            return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
+class Badge:
+    """One badge on /ws/badge. Whatever it reports about itself (all optional) goes in `info`."""
+
+    def __init__(self, ws: WebSocket, n: int):
+        self.ws = ws
+        self.id = f"badge-{n}"               # replaced by the id the badge sends in hello
+        self.info = {"ip": ws.client.host if ws.client else ""}
+        self.connected_at = time.time()
+        self.last_seen = time.monotonic()
+        self.rtt_ms: int | None = None
+        self.config_ack: int | None = None   # last config version the badge confirmed
+        self.ping_sent = 0.0
+
+    def report(self, msg: dict):
+        """Keep the fields the badge reports about itself (known keys, short scalar values)."""
+        for k in BADGE_INFO_KEYS & msg.keys():
+            v = msg[k]
+            if isinstance(v, (int, float, bool)) or v is None:
+                self.info[k] = v
+            elif isinstance(v, str):
+                self.info[k] = v[:60]
+        if isinstance(msg.get("config_v"), int):
+            self.config_ack = msg["config_v"]
+
+    def public(self, active: bool, config_v: int) -> dict:
+        return {"id": self.id, "active": active, **self.info, "rtt_ms": self.rtt_ms,
+                "seen_s_ago": round(time.monotonic() - self.last_seen, 1),
+                "online_s": round(time.time() - self.connected_at),
+                "config_synced": self.config_ack == config_v}
+
+
 # ---------------------------------------------------------------- server state
 class State:
     def __init__(self):
@@ -389,7 +437,11 @@ class State:
         self.active = set(FIELDS)     # checked contexts: fields to choose between, plus "larp"
         self.context_name = packs[0]["name"] if packs else ""
         self.context = packs[0]["text"] if packs else ""   # reuse the most recent pack on restart
-        self.badge: WebSocket | None = None
+        self.badges: dict[str, Badge] = {}      # every badge online, by id
+        self.active_badge: str | None = None    # the one the dashboard connected; only its mic and buttons count
+        self.badge_seq = 0
+        self.config_v = 0                       # bumped whenever badge_config() changes
+        self.last_config: dict | None = None
         self.dashboards: set[WebSocket] = set()
         self.segmenter = Segmenter()
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -398,6 +450,22 @@ class State:
         self.utterances: dict[int, dict] = {}
         self.last_id: int | None = None
         self.recording: dict | None = None   # voice setup in progress: {"name", "pcm", "speech_ms", "vad"}
+
+    @property
+    def badge(self) -> WebSocket | None:
+        """The connected (active) badge's socket, if it's online."""
+        b = self.badges.get(self.active_badge or "")
+        return b.ws if b else None
+
+    def badge_config(self) -> dict:
+        """What the badge should be doing and can show on its LEDs/screen. Pushed whenever it changes."""
+        return {"listening": self.listening, "target": self.target,
+                "fields": [d for d in FIELDS if d in self.active], "larp": "larp" in self.active,
+                "domain": self.badge_mode(), "voice": VOICE.name if VOICE.is_users else "",
+                "voice_setup": self.recording is not None}
+
+    def badges_info(self) -> list[dict]:
+        return [b.public(b.id == self.active_badge, self.config_v) for b in self.badges.values()]
 
     def badge_mode(self) -> str:
         fields = [d for d in FIELDS if d in self.active]
@@ -410,6 +478,8 @@ class State:
                      for k, v in STYLES.items()]
         return {"t": "status", "listening": self.listening, "target": self.target,
                 "contexts": contexts, "badge": self.badge is not None,
+                "badges": self.badges_info(), "badge_config": {"v": self.config_v, **self.badge_config()},
+                "badge_url": f"ws://{lan_ip()}:{os.getenv('PORT') or 8000}/ws/badge",
                 "context_name": self.context_name, "context": self.context,
                 "languages": LANGUAGES, "packs": list_contexts(), "voice": VOICE.info(),
                 "voice_recording": self.recording and round(self.recording["speech_ms"] / 1000, 1)}
@@ -420,11 +490,12 @@ state = State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(worker())
+    tasks = [asyncio.create_task(worker()), asyncio.create_task(badge_heartbeat())]
     log.info("ready: target=%s, gemini=%s, tts=%s, context pack=%r",
              state.target, GEMINI_MODEL, TTS_MODEL, state.context_name or None)
     yield
-    task.cancel()
+    for task in tasks:
+        task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -532,25 +603,115 @@ async def worker():
 
 
 # ---------------------------------------------------------------- control messages
-async def tell_badge_mode():
-    if state.badge:
-        await state.badge.send_json({"t": "mode", "domain": state.badge_mode()})
+async def send_to_badge(badge: Badge, msg: dict):
+    try:
+        await badge.ws.send_json(msg)
+    except Exception as e:
+        log.warning("couldn't reach %s: %s", badge.id, e)
+
+
+async def sync_badge(force: bool = False):
+    """Push the config to the connected badge when it changed (or when forced, e.g. on connect)."""
+    cfg = state.badge_config()
+    if cfg != state.last_config:
+        state.config_v += 1
+        state.last_config = cfg
+        force = True
+    b = state.badges.get(state.active_badge or "")
+    if b and force:
+        await send_to_badge(b, {"t": "config", "v": state.config_v, **cfg})
+        await send_to_badge(b, {"t": "mode", "domain": cfg["domain"]})  # older firmware only knows "mode"
+
+
+async def state_changed():
+    await sync_badge()
+    await broadcast(state.status())
+
+
+async def activate_badge(badge_id: str | None):
+    """Make this badge the connected one (None = none). The others stay online but are ignored."""
+    previous = state.badges.get(state.active_badge or "")
+    state.active_badge = badge_id
+    state.segmenter.reset()
+    state.mute_until = 0.0
+    if previous and previous.id != badge_id:
+        await send_to_badge(previous, {"t": "active", "value": False})
+    if badge := state.badges.get(badge_id or ""):
+        log.info("connected to %s", badge.id)
+        await send_to_badge(badge, {"t": "active", "value": True})
+        await sync_badge(force=True)
+
+
+async def handle_badge_command(msg: dict):
+    """Dashboard controls for badges: connect / disconnect / identify / volume."""
+    action, badge = msg.get("action"), state.badges.get(msg.get("id") or state.active_badge or "")
+    if action == "connect" and badge:
+        await activate_badge(badge.id)
+    elif action == "disconnect":
+        await activate_badge(None)
+    elif action == "identify" and badge:
+        await send_to_badge(badge, {"t": "identify"})   # badge blinks its LED / beeps
+    elif action == "volume" and badge and isinstance(msg.get("value"), (int, float)):
+        badge.info["volume"] = max(0, min(100, int(msg["value"])))
+        await send_to_badge(badge, {"t": "volume", "value": badge.info["volume"]})
+
+
+async def handle_badge_message(badge: Badge, msg: dict):
+    """JSON from a badge: its own hello/state/pong, else buttons (only from the connected badge)."""
+    badge.last_seen = time.monotonic()
+    t = msg.get("t")
+    if t == "hello":
+        new_id = str(msg.get("id") or badge.id)[:40]
+        if new_id != badge.id:
+            if stale := state.badges.pop(new_id, None):  # the same badge's old socket, from before a reboot
+                with contextlib.suppress(Exception):
+                    await stale.ws.close()
+            state.badges.pop(badge.id, None)
+            if state.active_badge == badge.id:
+                state.active_badge = new_id
+            badge.id = new_id
+            state.badges[new_id] = badge
+        badge.report(msg)
+        log.info("badge hello: %s %s", badge.id, badge.info)
+        if state.badge is None:
+            state.active_badge = badge.id  # nothing connected yet: take this one
+        await send_to_badge(badge, {"t": "active", "value": badge.id == state.active_badge})
+        if badge.id == state.active_badge:
+            await sync_badge(force=True)
+        await broadcast(state.status())
+    elif t in ("state", "pong"):
+        if t == "pong" and badge.ping_sent:
+            badge.rtt_ms = round((time.monotonic() - badge.ping_sent) * 1000)
+        badge.report(msg)
+        if t == "state":
+            await broadcast({"t": "badges", "badges": state.badges_info()})
+    elif badge.id == state.active_badge:
+        await handle_control(msg)  # ptt, fb, mode (BOOT button)
+
+
+async def badge_heartbeat():
+    """Every few seconds: ping badges (latency, battery) and refresh the dashboard's badge panel."""
+    while True:
+        await asyncio.sleep(BADGE_PING_S)
+        for b in list(state.badges.values()):
+            b.ping_sent = time.monotonic()
+            await send_to_badge(b, {"t": "ping"})
+        if state.badges:
+            await broadcast({"t": "badges", "badges": state.badges_info()})
 
 
 async def handle_control(msg: dict):
-    """JSON messages from the dashboard and the badge's buttons."""
+    """JSON messages from the dashboard, and button messages from the connected badge."""
     t = msg.get("t")
     if t == "mode" and msg.get("state") in ("listen", "stop"):
         state.listening = msg["state"] == "listen"
         state.segmenter.reset()
     elif t == "toggle" and msg.get("id") in {**FIELDS, **STYLES}:  # a context checkbox
         state.active = (state.active | {msg["id"]}) if msg.get("on") else (state.active - {msg["id"]})
-        await tell_badge_mode()
     elif t == "mode" and (msg.get("domain") == "auto" or msg.get("domain") in FIELDS):
         # Badge BOOT button: "auto" checks every field, a field name checks only that one. LARP is kept.
         fields = set(FIELDS) if msg["domain"] == "auto" else {msg["domain"]}
         state.active = fields | (state.active & set(STYLES))
-        await tell_badge_mode()
     elif t == "ptt":  # push-to-talk from the badge: release ends the sentence immediately
         if msg.get("state") == "start":
             state.listening = True
@@ -588,14 +749,12 @@ async def handle_control(msg: dict):
         await broadcast(ML.metrics())
     elif t == "voice":
         await handle_voice(msg)
-    elif t == "hello":
-        log.info("badge says hello")
-        await tell_badge_mode()
-        return
+    elif t == "badge":
+        await handle_badge_command(msg)
     else:
         log.warning("ignored message: %s", msg)
         return
-    await broadcast(state.status())
+    await state_changed()
 
 
 async def handle_voice(msg: dict):
@@ -632,7 +791,7 @@ async def finish_voice_setup(name: str, wav: bytes, speech_s: float) -> str | No
             error = f"voice setup failed: {type(e).__name__}: {e}"
     if error:
         await broadcast({"t": "error", "id": None, "msg": error})
-    await broadcast(state.status())
+    await state_changed()
     return error
 
 
@@ -661,7 +820,7 @@ def wav_seconds(wav: bytes) -> float:
         raise HTTPException(400, "send a WAV file")
 
 
-async def receive_loop(ws: WebSocket, on_bytes=None):
+async def receive_loop(ws: WebSocket, on_bytes=None, on_json=handle_control):
     while True:
         m = await ws.receive()
         if m["type"] == "websocket.disconnect":
@@ -675,7 +834,7 @@ async def receive_loop(ws: WebSocket, on_bytes=None):
             except json.JSONDecodeError:
                 log.warning("bad JSON: %r", m["text"][:100])
                 continue
-            await handle_control(msg)
+            await on_json(msg)
 
 
 # ---------------------------------------------------------------- routes
@@ -719,13 +878,20 @@ async def reference_dashboard():
 @app.websocket("/ws/badge")
 async def badge_ws(ws: WebSocket):
     await ws.accept()
-    state.badge = ws
-    state.segmenter.reset()
-    log.info("badge connected")
-    await ws.send_json({"t": "mode", "domain": state.badge_mode()})
+    state.badge_seq += 1
+    badge = Badge(ws, state.badge_seq)
+    state.badges[badge.id] = badge
+    log.info("badge online: %s from %s", badge.id, badge.info["ip"])
+    if state.badge is None:
+        await activate_badge(badge.id)  # first badge online is connected automatically
+    else:
+        await send_to_badge(badge, {"t": "active", "value": False})
     await broadcast(state.status())
 
     async def on_audio(pcm: bytes):
+        badge.last_seen = time.monotonic()
+        if badge.id != state.active_badge:
+            return  # online but not the connected badge
         if state.recording:
             await record_voice_sample(pcm)
             return
@@ -736,13 +902,14 @@ async def badge_ws(ws: WebSocket):
             await state.queue.put(("sentence", *sentence))
 
     try:
-        await receive_loop(ws, on_audio)
+        await receive_loop(ws, on_audio, lambda msg: handle_badge_message(badge, msg))
     except WebSocketDisconnect:
         pass
     finally:
-        if state.badge is ws:
-            state.badge = None
-        log.info("badge disconnected")
+        # The active id is kept, so the same badge reconnecting (same hello id) is connected again.
+        if state.badges.get(badge.id) is badge:
+            del state.badges[badge.id]
+        log.info("badge offline: %s", badge.id)
         await broadcast(state.status())
 
 

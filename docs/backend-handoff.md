@@ -16,6 +16,7 @@ badge mic ─► voice detection ─► Whisper ─► local ML ─► Gemini �
 - **LARP mode:** drops filler words and upgrades weak phrases locally, then asks Gemini (same call) to make the speaker sound like an expert.
 - **Learning:** 👍/👎 per sentence. 👎 on a word replays the sentence with that word's next translation; one 👎 changes the default from then on.
 - **Voice:** translations are spoken in the user's own voice, cloned once at the start (voice setup on the dashboard).
+- **Badge control:** the dashboard lists every badge online; **Connect** picks which one is used. The backend pushes it its settings (language, contexts, LARP, listening, voice) whenever they change, and shows its battery, Wi-Fi, latency, firmware and whether it confirmed the settings. Identify (blink), volume, disconnect.
 
 ## Who owns what
 
@@ -65,7 +66,7 @@ Dashboard: http://localhost:8000. Without keys or a badge: open `dashboard/index
 | Who | What |
 |---|---|
 | Everyone | OpenAI and Gemini keys in `.env`. ElevenLabs key needs **Voices → Write** permission for voice setup, and a paid plan (Starter+) for voice cloning. |
-| A | Firmware per `docs/messages.md`. For Render: `wss://` with `beginSSL`. |
+| A | Firmware per `docs/messages.md`. Minimum: audio + `ptt` + `fb`. For the badge panel: send `hello` (stable `id` from the MAC), `state`, answer `ping`; handle `config`, `active`, `identify`, `volume`. For Render: `wss://` with `beginSSL`. |
 | C + D | Fill `data/glossaries/<context>.json`, `data/train.jsonl`, `data/larp.json`. Have someone who reads Korean/Spanish check the translations. `data/README.md` still lists the old domains. |
 | D | Style the dashboard for the projector; plain-vs-Larpslator comparison for the demo. |
 
