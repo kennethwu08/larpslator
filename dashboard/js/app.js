@@ -25,6 +25,7 @@
   // ---------------------------------------------------------------- connection + status
   $("pill-mock").hidden = !larp.mock;
   window.LarpMonitor?.init(larp);
+  window.LarpWebAudio?.init(larp);  // WEB_AUDIO fallback (hidden unless the backend has it on)
   larp.on("open", () => { setConn("Connected", "on"); if ($("code-sheet").open) $("code-sheet").close(); });
   larp.on("close", () => { setConn("Reconnecting…", "bad"); enable(false); });
 
@@ -295,10 +296,16 @@
   }
   const cap = s => s ? s[0].toUpperCase() + s.slice(1) : "";
 
+  // With the web audio fallback on, every sentence says where it came from (Badge or Web).
+  function sourceTag(client) {
+    if (!client || !(status?.web_audio?.enabled || client === "web")) return "";
+    return `<span class="source-tag ${client === "web" ? "web" : ""}">${client === "web" ? "Web" : "Badge"}</span>`;
+  }
+
   larp.on("transcript", m => {
     const el = card(m.id);
     el.classList.add("pending");
-    el.innerHTML = `<div class="lang">${esc(cap(m.lang))}</div><div class="said">${esc(m.source)}</div>
+    el.innerHTML = `<div class="lang">${sourceTag(m.client)}${esc(cap(m.lang))}</div><div class="said">${esc(m.source)}</div>
       <div class="heard" aria-hidden="true">…</div><div class="stage-line" role="status">Heard. Translating and speaking…</div>`;
   });
 
@@ -309,7 +316,7 @@
     const total = t.total ? (t.total / 1000).toFixed(1) + " s" : "cached";
     const larpLine = u.larp && u.larp.text !== u.source ? `<div class="larp"><b>LARP</b> ${esc(u.larp.text)}</div>` : "";
     el.innerHTML = `
-      <div class="lang">${esc(cap(u.lang))} → ${esc(u.target)}</div>
+      <div class="lang">${sourceTag(u.client)}${esc(cap(u.lang))} → ${esc(u.target)}</div>
       <div class="said">${highlight(u.source || "", terms)}</div>
       ${larpLine}
       <div class="heard" lang="${esc(LANG_TAGS[u.target] || "")}">${esc(u.translation)}</div>
@@ -351,7 +358,7 @@
   });
 
   // What the backend did for one sentence: stage timings, field, jargon, notes, LARP edits.
-  const STAGES = [["whisper", "Speech to text"], ["ml", "Field and jargon (on this laptop)"], ["llm", "Translation (LLM)"], ["elevenlabs", "Voice"]];
+  const STAGES = [["stt", "Speech to text"], ["ml", "Field and jargon (on this laptop)"], ["llm", "Translation (LLM)"], ["elevenlabs", "Voice"]];
   function how(u) {
     const t = u.timing_ms || {};
     const parts = STAGES.filter(([k]) => k in t);

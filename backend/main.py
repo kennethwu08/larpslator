@@ -1,4 +1,5 @@
-"""Larpslator backend: badge audio -> VAD -> Whisper -> local ML -> Featherless LLM -> ElevenLabs -> badge.
+"""Larpslator backend: badge audio -> VAD -> speech to text (ElevenLabs Scribe) -> local ML -> Featherless LLM
+-> ElevenLabs voice -> badge.
 
 The LLM only translates (and, in LARP mode, polishes in the same call). Field detection,
 tone, jargon choice, context trimming, LARP phrase upgrades and learning from feedback
@@ -44,24 +45,33 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("larpslator")
 
 # Sentry (on when SENTRY_DSN is set): unhandled FastAPI errors are captured automatically; pipeline failures are
-# reported with a "step" tag (whisper / translation / elevenlabs / ...) so each failing service is its own issue,
+# reported with a "step" tag (speech_to_text / translation / elevenlabs / ...) so each failing service is its own issue,
 # and each sentence is a trace with one span per stage. Without a DSN all sentry_sdk calls are no-ops.
-if os.getenv("SENTRY_DSN"):
+def init_sentry(dsn: str, **overrides):
+    """The app's Sentry setup (tests call it too, with a capture transport, so they check the real settings)."""
     from sentry_sdk.integrations.logging import LoggingIntegration
-    sentry_sdk.init(dsn=os.environ["SENTRY_DSN"], environment=os.getenv("SENTRY_ENVIRONMENT") or "local",
-                    traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE") or 0.2), send_default_pii=False,
-                    # Log lines become breadcrumbs, not issues: errors are reported once, with their step tag.
-                    integrations=[LoggingIntegration(level=logging.INFO, event_level=None)])
+    options = dict(dsn=dsn, environment=os.getenv("SENTRY_ENVIRONMENT") or "local",
+                   traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE") or 0.2),  # no personal data: the default
+                   # Log lines become breadcrumbs, not issues: errors are reported once, with their step tag.
+                   integrations=[LoggingIntegration(level=logging.INFO, event_level=None)])
+    sentry_sdk.init(**{**options, **overrides})
+
+
+if os.getenv("SENTRY_DSN"):
+    init_sentry(os.environ["SENTRY_DSN"])
     log.info("Sentry on (%s)", os.getenv("SENTRY_ENVIRONMENT") or "local")
 
 
-def report(e: Exception, step: str = "", **context):
-    """Send a handled error to Sentry, tagged with the pipeline step. Each exception is reported once."""
+def report(e: Exception, step: str = "", client: str = "", **context):
+    """Send a handled error to Sentry, tagged with the pipeline step (and client: badge/web, when known here;
+    inside run_pipeline it's already on the scope). Each exception is reported once."""
     if getattr(e, "_larp_reported", False):
         return
     with sentry_sdk.new_scope() as scope:
         if step:
             scope.set_tag("step", step)
+        if client:
+            scope.set_tag("client", client)
         for k, v in context.items():
             scope.set_extra(k, v)
         sentry_sdk.capture_exception(e)
@@ -96,7 +106,7 @@ FRAME_MS = 30                                      # webrtcvad accepts 10/20/30 
 FRAME_BYTES = SAMPLE_RATE * FRAME_MS // 1000 * 2   # 960 bytes of 16-bit mono
 SILENCE_END_MS = 700                               # this much silence ends a sentence
 PREROLL_MS = 300                                   # audio kept from before speech starts
-MIN_SPEECH_MS = 400                                # shorter blips are dropped (Whisper hallucinates on them)
+MIN_SPEECH_MS = 400                                # shorter blips are dropped (speech to text invents words for them)
 MAX_SENTENCE_MS = 15000                            # force a cut on very long speech
 RESUME_AFTER_PLAYBACK_S = 0.3                      # badge unmutes this long after playback ends
 SEND_CHUNK_BYTES = 3200                            # 100 ms of audio per WebSocket frame
@@ -113,6 +123,7 @@ SCRIPT_RULES = {  # target: (must contain, must not contain)
 }
 LATIN_FORBIDDEN = HAN + "|" + HANGUL + "|" + KANA     # Spanish, French, German, English...
 TTS_MODEL = os.getenv("ELEVENLABS_MODEL") or "eleven_flash_v2_5"
+STT_MODEL = os.getenv("ELEVENLABS_STT_MODEL") or "scribe_v2"   # ~0.6 s for a sentence; Korean and Tamil too
 STOCK_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # premade ElevenLabs voice, used only until the user's voice is set up
 MIN_SAMPLE_SPEECH_S = 20                 # voice setup: least speech accepted; ~60 s sounds much more like you
 MAX_SAMPLE_S = 120
@@ -135,17 +146,17 @@ CACHE_DIR = HERE / "cache"
 for d in (CONTEXT_DIR, LOG_DIR, CACHE_DIR / "tts"):
     d.mkdir(parents=True, exist_ok=True)
 
-missing = [k for k in ("OPENAI_API_KEY", "FEATHERLESS_API_KEY", "ELEVENLABS_API_KEY") if not os.getenv(k)]
+missing = [k for k in ("FEATHERLESS_API_KEY", "ELEVENLABS_API_KEY") if not os.getenv(k)]
 if missing:
     raise SystemExit(f"Missing in .env: {', '.join(missing)} (see .env.example in the repo root)")
 
-openai_client = OpenAI()  # reads OPENAI_API_KEY
 # Featherless speaks the OpenAI API, so the same SDK works with a different base URL.
 llm_client = OpenAI(api_key=os.getenv("FEATHERLESS_API_KEY"), base_url="https://api.featherless.ai/v1",
                     timeout=25, max_retries=1)
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
 import ml  # noqa: E402
+import web_audio  # noqa: E402  WEB_AUDIO fallback
 from ml import FIELDS, STYLES, LocalML  # noqa: E402
 ML = LocalML()
 
@@ -219,20 +230,27 @@ def pcm_to_wav(pcm: bytes) -> bytes:
     return out.getvalue()
 
 
-def transcribe(pcm: bytes, prompt: str = "") -> tuple[str, str]:
-    """Returns (text, detected_language). The prompt lists jargon so Whisper spells it right."""
-    r = openai_client.audio.transcriptions.create(
-        model="whisper-1",
+# Scribe reports ISO 639-3 codes; the rest of the pipeline uses language names ("english", "korean", ...).
+STT_LANGUAGES = {"eng": "english", "kor": "korean", "tam": "tamil", "spa": "spanish", "fra": "french",
+                 "deu": "german", "jpn": "japanese", "cmn": "chinese", "zho": "chinese", "yue": "chinese"}
+
+
+def transcribe(pcm: bytes, keyterms: list[str] | None = None) -> tuple[str, str]:
+    """Speech to text with ElevenLabs Scribe (same key as the voice). Returns (text, detected language name).
+    `keyterms` is the checked fields' jargon, so it's spelled right ("kernel", not "colonel")."""
+    r = eleven_client.speech_to_text.convert(
+        model_id=STT_MODEL,
         file=("speech.wav", pcm_to_wav(pcm), "audio/wav"),
-        response_format="verbose_json",
-        prompt=prompt,
+        tag_audio_events=False,  # no "(laughter)" in the text
+        **({"keyterms": keyterms} if keyterms else {}),
     )
-    return r.text.strip(), (getattr(r, "language", "") or "").lower()
+    code = (getattr(r, "language_code", "") or "").lower()
+    return (r.text or "").strip(), STT_LANGUAGES.get(code, code)
 
 
-def same_language(whisper_lang: str, target: str) -> bool:
-    # Whisper says "english", "korean", "chinese"...; targets are "English", "Mandarin Chinese"...
-    return bool(whisper_lang) and whisper_lang in target.lower()
+def same_language(spoken: str, target: str) -> bool:
+    # Speech to text says "english", "korean", "chinese"...; targets are "English", "Mandarin Chinese"...
+    return bool(spoken) and spoken in target.lower()
 
 
 _translation_cache_file = CACHE_DIR / "translations.json"
@@ -423,21 +441,25 @@ def translate_and_speak(r: dict, timing: dict):
 
 
 def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
-                 active: set[str] | None = None, on_transcript=None) -> dict:
+                 active: set[str] | None = None, on_transcript=None, client: str = "badge") -> dict:
     """Runs one sentence through every stage. Raises on API errors; callers decide to skip.
 
     `active` is the set of checked contexts (fields and "larp"); default: all fields, no LARP.
+    `client` ("badge" or "web") is where the audio came from; it tags the Sentry trace and any errors.
     Returns {"source", "lang", "target", "domain", "domain_probs", "tone", "terms",
              "context_lines", "larp", "translation", "audio", "timing_ms"}. Cached stages report 0 ms.
     """
     active = set(FIELDS) if active is None else active
     timing = {"vad": round(vad_s * 1000, 1)}
-    with sentry_sdk.start_transaction(op="utterance", name="translate sentence") as tx:
+    with sentry_sdk.new_scope() as scope, \
+            sentry_sdk.start_transaction(op="utterance", name="translate sentence") as tx:
+        scope.set_tag("client", client)  # errors reported inside inherit this scope
+        tx.set_tag("client", client)
         tx.set_tag("target", target)
         t = time.perf_counter()
-        with stage("whisper"):
-            source, lang = transcribe(pcm, ML.whisper_prompt(active))
-        timing["whisper"] = round((time.perf_counter() - t) * 1000)
+        with stage("speech_to_text"):
+            source, lang = transcribe(pcm, ML.keyterms(active))
+        timing["stt"] = round((time.perf_counter() - t) * 1000)
         r = {"source": source, "lang": lang, "target": target, "translation": "", "audio": b"", "timing_ms": timing}
         if not source:
             return r
@@ -454,9 +476,12 @@ def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
         return r
 
 
-def retranslate(r: dict, timing: dict):
+def retranslate(r: dict, timing: dict, client: str = "badge"):
     """The thumbs-down replay, as its own trace."""
-    with sentry_sdk.start_transaction(op="utterance", name="retry after feedback"):
+    with sentry_sdk.new_scope() as scope, \
+            sentry_sdk.start_transaction(op="utterance", name="retry after feedback") as tx:
+        scope.set_tag("client", client)
+        tx.set_tag("client", client)
         translate_and_speak(r, timing)
 
 
@@ -506,24 +531,28 @@ def lan_ip() -> str:
         return "127.0.0.1"
 
 
-class Badge:
-    """One badge on /ws/badge. Whatever it reports about itself (all optional) goes in `info`."""
+class AudioClient:
+    """Anything that streams mic audio in and plays translations back: a badge, or the dashboard's web audio
+    fallback. Each has its own voice detector and playback mute window, so two can stream at the same time."""
+    kind = "badge"
 
-    def __init__(self, ws: WebSocket, n: int):
+    def __init__(self, ws: WebSocket, client_id: str):
         self.ws = ws
-        self.id = f"badge-{n}"               # replaced by the id the badge sends in hello
-        self.info = {"ip": ws.client.host if ws.client else ""}
+        self.id = client_id
+        self.segmenter = Segmenter()
+        self.mute_until = 0.0     # playing a translation (or just finished) until this time: mic ignored
         self.connected_at = time.time()
         self.last_seen = time.monotonic()
-        self.rtt_ms: int | None = None
-        self.config_ack: int | None = None   # last config version the badge confirmed
-        self.ping_sent = 0.0
         self.carry = b""          # odd byte left over from the last frame (keeps 16-bit samples aligned)
         self.audio_bytes = 0      # since the last heartbeat
         self.peak_rms = 0.0
         self.mic_kbps: int | None = None
         self.mic_level_db: float | None = None
         self.audio_dropped = 0
+
+    def hears(self) -> bool:
+        """Whether mic audio from this client should be translated right now."""
+        raise NotImplementedError
 
     def take_audio(self, data: bytes) -> bytes:
         """Check a mic frame: drop oversized ones, keep samples aligned, measure rate and loudness."""
@@ -544,6 +573,22 @@ class Badge:
         self.mic_level_db = round(20 * math.log10(self.peak_rms / 32768), 1) if self.peak_rms > 1 else None
         self.audio_bytes, self.peak_rms = 0, 0.0
 
+
+class Badge(AudioClient):
+    """One badge on /ws/badge. Whatever it reports about itself (all optional) goes in `info`."""
+    kind = "badge"
+
+    def __init__(self, ws: WebSocket, n: int):
+        super().__init__(ws, f"badge-{n}")   # id replaced by the one the badge sends in hello
+        self.info = {"ip": ws.client.host if ws.client else ""}
+        self.rtt_ms: int | None = None
+        self.config_ack: int | None = None   # last config version the badge confirmed
+        self.ping_sent = 0.0
+
+    def hears(self) -> bool:
+        # Only the connected badge, and only while listening (dashboard Listen or push-to-talk).
+        return self.id == state.active_badge and state.listening
+
     def report(self, msg: dict):
         """Keep the fields the badge reports about itself (known keys, short scalar values)."""
         for k in BADGE_INFO_KEYS & msg.keys():
@@ -561,6 +606,19 @@ class Badge:
                 "online_s": round(time.time() - self.connected_at),
                 "config_synced": self.config_ack == config_v,
                 "mic_kbps": self.mic_kbps, "mic_level_db": self.mic_level_db, "audio_dropped": self.audio_dropped}
+
+
+class WebClient(AudioClient):
+    """The dashboard's browser mic and speaker (web audio fallback, see web_audio.py). It has its own
+    Listen/Stop ({"t":"mode","state":...} on its own socket), independent of the badge's."""
+    kind = "web"
+
+    def __init__(self, ws: WebSocket, n: int):
+        super().__init__(ws, f"web-{n}")
+        self.listening = False
+
+    def hears(self) -> bool:
+        return self.listening
 
 
 # ---------------------------------------------------------------- pairing (who may connect)
@@ -626,10 +684,10 @@ class State:
         self.badge_names: dict[str, str] = {}   # names given on the dashboard; win over what the badge reports
         self.config_v = 0                       # bumped whenever badge_config() changes
         self.last_config: dict | None = None
+        self.web_clients: dict[str, WebClient] = {}  # browsers using the web audio fallback
+        self.web_seq = 0
         self.dashboards: set[WebSocket] = set()
-        self.segmenter = Segmenter()
         self.queue: asyncio.Queue = asyncio.Queue()
-        self.mute_until = 0.0         # badge is playing (or just finished) until this time
         self.next_id = 1
         self.utterances: dict[int, dict] = {}
         self.last_id: int | None = None
@@ -640,6 +698,10 @@ class State:
         """The connected (active) badge's socket, if it's online."""
         b = self.badges.get(self.active_badge or "")
         return b.ws if b else None
+
+    def find_client(self, kind: str, client_id: str) -> AudioClient | None:
+        """A connected audio client, or None if it has gone away."""
+        return (self.web_clients if kind == "web" else self.badges).get(client_id)
 
     def badge_config(self) -> dict:
         """What the badge should be doing and can show on its LEDs/screen. Pushed whenever it changes."""
@@ -672,7 +734,10 @@ class State:
                 "badge_url": pairing_info()["badge_url"], "pairing": pairing_info(),
                 "context_name": self.context_name, "context": self.context,
                 "languages": LANGUAGES, "packs": list_contexts(), "voice": VOICE.info(),
-                "voice_recording": self.recording and round(self.recording["speech_ms"] / 1000, 1)}
+                "voice_recording": self.recording and round(self.recording["speech_ms"] / 1000, 1),
+                "web_audio": {"enabled": web_audio.enabled(),  # WEB_AUDIO
+                              "listening": sum(c.listening for c in self.web_clients.values()),
+                              "clients": len(self.web_clients)}}
 
 
 state = State()
@@ -703,29 +768,45 @@ async def broadcast(msg: dict):
             state.dashboards.discard(ws)
 
 
-async def send_audio_to_badge(pcm: bytes):
-    """Sends audio paced at about real time, never overlapping earlier playback."""
-    # Wait until the badge has finished the previous clip (plus its resume delay).
-    await asyncio.sleep(max(0.0, state.mute_until - time.monotonic()))
-    if state.badge is None:
+async def play_to(client: AudioClient | None, pcm: bytes):
+    """Sends a translation's audio to the client it came from (badge or browser), paced at about real time,
+    never overlapping earlier playback. Its mic is ignored until playback ends + RESUME_AFTER_PLAYBACK_S."""
+    if client is None or not pcm:
         return
+    # Wait until the previous clip has finished (plus the resume delay).
+    await asyncio.sleep(max(0.0, client.mute_until - time.monotonic()))
     duration = len(pcm) / (SAMPLE_RATE * 2)
-    state.mute_until = time.monotonic() + duration + RESUME_AFTER_PLAYBACK_S
-    state.segmenter.reset()  # drop any half-heard sentence; the badge mic is muted now
+    client.mute_until = time.monotonic() + duration + RESUME_AFTER_PLAYBACK_S
+    client.segmenter.reset()  # drop any half-heard sentence; the mic is muted now
     for i in range(0, len(pcm), SEND_CHUNK_BYTES):
+        if state.find_client(client.kind, client.id) is not client:
+            log.warning("%s %s went offline during playback", client.kind, client.id)
+            return
         chunk = pcm[i:i + SEND_CHUNK_BYTES]
-        ws = state.badge
-        if ws is None:
-            log.warning("badge went offline during playback")
-            return
         try:
-            await ws.send_bytes(chunk)
+            await client.ws.send_bytes(chunk)
         except Exception as e:
-            log.warning("playback to badge failed: %s", e)
-            report(e, step="badge_playback")
+            log.warning("playback to %s %s failed: %s", client.kind, client.id, e)
+            report(e, step="playback", client=client.kind)
             return
-        # Stay slightly ahead of playback so the badge buffer never runs dry or overflows.
+        # Stay slightly ahead of playback so the client's buffer never runs dry or overflows.
         await asyncio.sleep(len(chunk) / (SAMPLE_RATE * 2) * 0.85)
+
+
+async def feed_audio(client: AudioClient, pcm: bytes):
+    """Mic audio from any client (badge or browser) into its voice detector; finished sentences are queued."""
+    client.last_seen = time.monotonic()
+    pcm = client.take_audio(pcm)
+    if not pcm:
+        return
+    if client.kind == "badge" and state.recording and client.id == state.active_badge:
+        await record_voice_sample(pcm)
+        return
+    # Ignore mic audio while not listening or while this client is playing a translation.
+    if not client.hears() or time.monotonic() < client.mute_until:
+        return
+    for sentence in client.segmenter.add(pcm):
+        await state.queue.put(("sentence", *sentence, client))
 
 
 def public(utt: dict) -> dict:
@@ -733,36 +814,44 @@ def public(utt: dict) -> dict:
     return {"t": "utterance", **{k: v for k, v in utt.items() if k not in ("audio", "rejected")}}
 
 
-def log_timing(uid: int, r: dict):
+def log_timing(uid: int, r: dict, client: str = "badge"):
     tm = r["timing_ms"]
-    log.info("utt %d | vad %.1fms | whisper %sms | ml %sms | llm %sms | elevenlabs %sms | total %sms | "
+    log.info("utt %d [%s] | vad %.1fms | stt %sms | ml %sms | llm %sms | elevenlabs %sms | total %sms | "
              "%s/%s | %r%s -> %r | terms %s",
-             uid, tm.get("vad", 0), tm.get("whisper", "-"), tm.get("ml", "-"), tm["llm"], tm["elevenlabs"],
+             uid, client, tm.get("vad", 0), tm.get("stt", "-"), tm.get("ml", "-"), tm["llm"], tm["elevenlabs"],
              tm["total"], r["domain"], r["tone"], r["source"],
              f" =larp=> {r['larp']['text']!r}" if r.get("larp") else "", r["translation"],
              {t["match"]: t["choice"] for t in r["terms"]} or "-")
 
 
-async def process_sentence(pcm: bytes, vad_s: float):
+async def process_sentence(pcm: bytes, vad_s: float, client: AudioClient):
     uid = state.next_id
     state.next_id += 1
     loop = asyncio.get_running_loop()
+    origin = {"client": client.kind, "client_id": client.id}  # shown on the dashboard, tagged in logs/Sentry
 
     def on_transcript(source, lang):  # runs in the pipeline thread; show text before translation finishes
         asyncio.run_coroutine_threadsafe(
-            broadcast({"t": "transcript", "id": uid, "source": source, "lang": lang}), loop)
+            broadcast({"t": "transcript", "id": uid, "source": source, "lang": lang, **origin}), loop)
 
-    r = await asyncio.to_thread(run_pipeline, pcm, state.target, state.context, vad_s,
-                                set(state.active), on_transcript)
-    if not r["source"]:
-        log.info("utterance %d: empty transcript, skipped", uid)
+    try:
+        r = await asyncio.to_thread(run_pipeline, pcm, state.target, state.context, vad_s,
+                                    set(state.active), on_transcript, client.kind)
+    except Exception as e:
+        # Reported here, with the sentence's id, so the dashboard can mark that sentence as failed.
+        log.error("sentence %d from %s skipped: %s: %s", uid, client.kind, type(e).__name__, e)
+        report(e, step="pipeline", client=client.kind)  # no-op if a stage already reported it
+        await broadcast({"t": "error", "id": uid, **origin, "msg": f"{type(e).__name__}: {e}"})
         return
-    log_timing(uid, r)
-    utt = {"id": uid, "retry": 0, "rejected": {}, **r}
+    if not r["source"]:
+        log.info("utterance %d (%s): empty transcript, skipped", uid, client.kind)
+        return
+    log_timing(uid, r, client.kind)
+    utt = {"id": uid, "retry": 0, "rejected": {}, **origin, **r}
     state.utterances[uid] = utt
     state.last_id = uid
     await broadcast(public(utt))
-    await send_audio_to_badge(r["audio"])
+    await play_to(client, r["audio"])
 
 
 async def retry_with_next_option(uid: int, blamed: dict):
@@ -772,19 +861,22 @@ async def retry_with_next_option(uid: int, blamed: dict):
         return
     utt["rejected"].setdefault(blamed["term"], []).append(blamed["choice"])
     terms = ML.find_terms(utt["source"], utt["domain"], utt["target"], utt["rejected"],
-                          spoken=ml.WHISPER_LANGS.get(utt["lang"], ""))
+                          spoken=ml.SPOKEN_LANGS.get(utt["lang"], ""))
     terms = [t for t in terms if t["choice"]]  # a term with no options left falls back to the LLM's choice
     if [t["choice"] for t in terms] == [t["choice"] for t in utt["terms"]]:
         await broadcast({"t": "error", "id": uid, "msg": f"no other translations left for '{blamed['term']}'"})
         return
     r = {**utt, "terms": terms}
     timing = {}
-    await asyncio.to_thread(retranslate, r, timing)
+    await asyncio.to_thread(retranslate, r, timing, utt.get("client", "badge"))
     r["timing_ms"], r["retry"] = timing, utt["retry"] + 1
     state.utterances[uid] = r
-    log_timing(uid, r)
+    log_timing(uid, r, utt.get("client", "badge"))
     await broadcast(public(r))
-    await send_audio_to_badge(r["audio"])
+    # Replay where it was said; if that browser/badge is gone, on the connected badge.
+    target = state.find_client(utt.get("client", "badge"), utt.get("client_id", "")) \
+        or state.badges.get(state.active_badge or "")
+    await play_to(target, r["audio"])
 
 
 async def worker():
@@ -793,13 +885,15 @@ async def worker():
         job = await state.queue.get()
         try:
             if job[0] == "sentence":
-                await process_sentence(job[1], job[2])
+                await process_sentence(job[1], job[2], job[3])
             elif job[0] == "retry":
                 await retry_with_next_option(job[1], job[2])
         except Exception as e:
-            log.error("%s skipped: %s: %s", job[0], type(e).__name__, e)
-            report(e, step="pipeline")  # no-op if a stage already reported it
-            await broadcast({"t": "error", "id": job[1] if job[0] == "retry" else None,
+            client = job[3].kind if job[0] == "sentence" else \
+                (state.utterances.get(job[1]) or {}).get("client", "badge")
+            log.error("%s from %s skipped: %s: %s", job[0], client, type(e).__name__, e)
+            report(e, step="pipeline", client=client)  # no-op if a stage already reported it
+            await broadcast({"t": "error", "id": job[1] if job[0] == "retry" else None, "client": client,
                              "msg": f"{type(e).__name__}: {e}"})
 
 
@@ -833,11 +927,11 @@ async def activate_badge(badge_id: str | None):
     """Make this badge the connected one (None = none). The others stay online but are ignored."""
     previous = state.badges.get(state.active_badge or "")
     state.active_badge = badge_id
-    state.segmenter.reset()
-    state.mute_until = 0.0
     if previous and previous.id != badge_id:
         await send_to_badge(previous, {"t": "active", "value": False})
     if badge := state.badges.get(badge_id or ""):
+        badge.segmenter.reset()
+        badge.mute_until = 0.0
         log.info("connected to %s", badge.id)
         await send_to_badge(badge, {"t": "active", "value": True})
         await sync_badge(force=True)
@@ -897,6 +991,8 @@ async def badge_heartbeat():
     """Every few seconds: ping badges (latency, battery) and refresh the dashboard's badge panel."""
     while True:
         await asyncio.sleep(BADGE_PING_S)
+        for c in list(state.web_clients.values()):
+            c.roll_audio_stats(BADGE_PING_S)
         for b in list(state.badges.values()):
             b.roll_audio_stats(BADGE_PING_S)
             b.ping_sent = time.monotonic()
@@ -908,9 +1004,11 @@ async def badge_heartbeat():
 async def handle_control(msg: dict):
     """JSON messages from the dashboard, and button messages from the connected badge."""
     t = msg.get("t")
+    active = state.badges.get(state.active_badge or "")
     if t == "mode" and msg.get("state") in ("listen", "stop"):
         state.listening = msg["state"] == "listen"
-        state.segmenter.reset()
+        if active:
+            active.segmenter.reset()
     elif t == "toggle" and msg.get("id") in {**FIELDS, **STYLES}:  # a context checkbox
         state.active = (state.active | {msg["id"]}) if msg.get("on") else (state.active - {msg["id"]})
     elif t == "mode" and (msg.get("domain") == "auto" or msg.get("domain") in FIELDS):
@@ -920,10 +1018,11 @@ async def handle_control(msg: dict):
     elif t == "ptt":  # push-to-talk from the badge: release ends the sentence immediately
         if msg.get("state") == "start":
             state.listening = True
-            state.segmenter.reset()
+            if active:
+                active.segmenter.reset()
         elif msg.get("state") == "end":
-            if sentence := state.segmenter.flush():
-                await state.queue.put(("sentence", *sentence))
+            if active and (sentence := active.segmenter.flush()):
+                await state.queue.put(("sentence", *sentence, active))
             state.listening = False
     elif t == "fb" and msg.get("val") in (1, -1):
         uid = msg.get("id") or state.last_id  # the badge's buttons apply to the latest sentence
@@ -1104,22 +1203,8 @@ async def badge_ws(ws: WebSocket):
         await send_to_badge(badge, {"t": "active", "value": False})
     await broadcast(state.status())
 
-    async def on_audio(pcm: bytes):
-        badge.last_seen = time.monotonic()
-        pcm = badge.take_audio(pcm)
-        if not pcm or badge.id != state.active_badge:
-            return  # online but not the connected badge
-        if state.recording:
-            await record_voice_sample(pcm)
-            return
-        # Ignore mic audio while stopped or while the badge is playing a translation.
-        if not state.listening or time.monotonic() < state.mute_until:
-            return
-        for sentence in state.segmenter.add(pcm):
-            await state.queue.put(("sentence", *sentence))
-
     try:
-        await receive_loop(ws, on_audio, lambda msg: handle_badge_message(badge, msg))
+        await receive_loop(ws, lambda pcm: feed_audio(badge, pcm), lambda msg: handle_badge_message(badge, msg))
     except WebSocketDisconnect:
         pass
     finally:
@@ -1148,6 +1233,48 @@ async def dashboard_ws(ws: WebSocket):
         pass
     finally:
         state.dashboards.discard(ws)
+
+
+async def web_client_ws(ws: WebSocket):
+    """A browser using the web audio fallback (web_audio.py checks the flag). Same pipeline as a badge:
+    binary frames = 16 kHz 16-bit mono mic audio; translations come back as binary frames in the same format.
+    JSON: {"t":"mode","state":"listen"|"stop"} is this browser's own Listen/Stop ("stop" ends the current
+    sentence); every other message (fb, context, toggle, ...) is handled like the dashboard's."""
+    await ws.accept()
+    if not authorized(ws):
+        await ws.close(code=4401, reason="pairing code required")
+        return
+    state.web_seq += 1
+    client = WebClient(ws, state.web_seq)
+    state.web_clients[client.id] = client
+    log.info("web audio client online: %s", client.id)
+    await ws.send_json({"t": "hello", "client": "web", "id": client.id, "sample_rate": SAMPLE_RATE,
+                        "resume_after_ms": round(RESUME_AFTER_PLAYBACK_S * 1000)})
+    await broadcast(state.status())
+
+    async def on_json(msg: dict):
+        if msg.get("t") == "mode" and msg.get("state") in ("listen", "stop"):
+            client.listening = msg["state"] == "listen"
+            if client.listening:
+                client.segmenter.reset()
+            elif sentence := client.segmenter.flush():  # Stop ends the sentence being spoken
+                await state.queue.put(("sentence", *sentence, client))
+            log.info("web audio %s: %s", client.id, msg["state"])
+            await broadcast(state.status())
+        else:
+            await handle_control(msg)
+
+    try:
+        await receive_loop(ws, lambda pcm: feed_audio(client, pcm), on_json)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        state.web_clients.pop(client.id, None)
+        log.info("web audio client offline: %s", client.id)
+        await broadcast(state.status())
+
+
+app.include_router(web_audio.router(web_client_ws, SAMPLE_RATE, RESUME_AFTER_PLAYBACK_S))  # WEB_AUDIO fallback
 
 
 # Last, so the routes above win: the team's dashboard app at /, or the reference page if it's missing.

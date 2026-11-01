@@ -260,7 +260,7 @@ button.opt:not(.chosen):hover { background: var(--cell-pressed); color: var(--la
 .how-body { margin-top: 8px; background: var(--bg); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
 .timeline { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--fill); margin: 4px 0 8px; }
 .timeline span { height: 100%; }
-.s-whisper { background: #5ac8fa; } .s-ml { background: var(--green); } .s-llm { background: var(--blue); } .s-elevenlabs { background: #af52de; }
+.s-stt { background: #5ac8fa; } .s-ml { background: var(--green); } .s-llm { background: var(--blue); } .s-elevenlabs { background: #af52de; }
 .legend { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; }
 .legend i { width: 8px; height: 8px; border-radius: 2px; }
 .legend .ms { color: var(--secondary); text-align: right; font-variant-numeric: tabular-nums; }
@@ -294,3 +294,20 @@ body.present .how { display: none; }
 .accent-text { color: var(--blue) !important; }
 #pair-sheet .group-title { padding-left: 16px; }
 #code-input { width: 60%; color: var(--label); }
+
+/* ---------- web audio fallback (WEB_AUDIO) ---------- */
+.web-audio { margin-bottom: 14px; }
+.wa-head { display: flex; align-items: center; gap: 12px; }
+.wa-head > div { flex: 1; }
+.wa-head h3 { margin-bottom: 2px; }
+.wa-listen { margin-left: 0; }
+.wa-meter { height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; margin: 12px 0 6px; }
+#wa-meter { height: 100%; width: 0; background: var(--green); transition: width .08s linear; }
+.wa-volume { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.wa-volume input { max-width: none; }
+.wa-row { border-top: .5px solid var(--sep); padding: 8px 0; }
+.wa-heard { font-size: 18px; font-weight: 500; margin-top: 2px; }
+#wa-status.ok { color: var(--green); }
+#wa-status.warn { color: var(--orange); }
+.source-tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; background: var(--fill); color: var(--secondary); margin-right: 6px; }
+.source-tag.web { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }

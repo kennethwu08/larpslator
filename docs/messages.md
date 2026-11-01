@@ -45,6 +45,29 @@ Several badges can be online; only the one **connected** on the dashboard is use
   The server never starts a new clip until the previous one has finished plus 300 ms.
   The badge should mute its mic while playing; the server also ignores mic audio during that window.
 
+## Web audio fallback (browser as mic + speaker)  (`ws://<laptop-ip>:8000/ws/web`)
+For when the badge hardware fails: the dashboard's **Web Audio** section uses the browser's mic and speaker instead.
+Same pipeline and same audio format as the badge (voice detection → speech to text with ElevenLabs Scribe →
+local ML → Featherless translation → ElevenLabs voice); the browser is just a second audio client.
+
+**On/off:** environment variable `WEB_AUDIO_FALLBACK=1` (in `.env` locally, Render's Environment tab in production);
+anything else, or unset, is off. Restart the backend after changing it. Off: `GET /api/web-audio` returns 404 (the
+dashboard hides the section) and `/ws/web` refuses the connection. The flag is checked only in `backend/web_audio.py`.
+
+- `GET /api/web-audio` (on) → `{"enabled": true, "websocket": "/ws/web", "sample_rate": 16000, "format": "pcm_s16le_mono", "chunk_ms": 100, "resume_after_ms": 300}`
+- Connect to `/ws/web` (pairing code as for the dashboard: `?token=<code>` except on the laptop itself). The server sends
+  `{"t":"hello","client":"web","id":"web-1","sample_rate":16000,"resume_after_ms":300}`.
+- Browser → server: binary frames of 16 kHz 16-bit mono PCM mic audio (the dashboard sends 100 ms = 3200 bytes).
+- `{"t":"mode","state":"listen"}` / `{"t":"mode","state":"stop"}` on **this** socket is the browser's own Listen/Stop,
+  independent of the badge. Stop also ends the sentence being spoken (like releasing push-to-talk).
+- Any other message on this socket (`fb`, `context`, `toggle`, `lang`, ...) works exactly as on `/ws/dashboard`.
+- Server → browser: the translation as binary frames of 16 kHz 16-bit mono PCM (3200 bytes, paced at real time),
+  only for sentences this browser said. The browser plays them with Web Audio at 16 kHz and doesn't send mic audio until
+  `resume_after_ms` after playback ends (the server also ignores it during that window), so the translation isn't re-heard.
+- Every `transcript`, `utterance` and `error` on the dashboard socket has `"client": "badge"` or `"web"` (and `client_id`
+  on utterances); Sentry issues and traces from the pipeline have a `client` tag too. Dashboard-side problems (mic
+  denied or missing, the web socket dropping) go to Sentry with `client=web`.
+
 ## Dashboard -> server  (`ws://<laptop-ip>:8000/ws/dashboard`)
 ```json
 {"t":"mode","state":"listen"}                      // or "stop"
@@ -92,6 +115,7 @@ Several badges can be online; only the one **connected** on the dashboard is use
              "ip":"172.20.10.4","rtt_ms":38,"seen_s_ago":0.4,"online_s":312,"config_synced":true,
              "mic_kbps":256,"mic_level_db":-28.5,"audio_dropped":0}]
   ```
+- `web_audio`: `{"enabled": bool, "clients": n, "listening": n}`, the web audio fallback (see above).
 - `voice.ready` is false until voice setup is done: translations then use a stock voice, and the app should push the user to set up.
   `voice_recording` is the seconds of speech recorded so far while a badge voice setup is running, else null.
 - `contexts` is the list of checkboxes, in display order. `kind: "field"` is a subject (the backend detects which checked field
@@ -100,7 +124,7 @@ Several badges can be online; only the one **connected** on the dashboard is use
   `built-in` (fallback in `backend/seeds.json`).
 - The meeting context pack (`context_name`, `context`, `packs`) is the separate free-text notes box.
 
-`transcript`: as soon as Whisper finishes, before the translation
+`transcript`: as soon as speech to text finishes, before the translation
 ```json
 {"t":"transcript","id":3,"source":"The kernel is preempting the thread.","lang":"english"}
 ```
@@ -116,7 +140,7 @@ Several badges can be online; only the one **connected** on the dashboard is use
  "terms":[{"term":"kernel","match":"kernel","pos":4,"domain":"cs","options":["커널","알맹이"],"choice":"커널"},
           {"term":"thread","match":"thread","pos":31,"domain":"cs","options":["스레드","실"],"choice":"스레드"}],
  "context_lines":["Prof. Lee","Agenda: scheduler review"],
- "timing_ms":{"vad":0.4,"whisper":620,"ml":11,"llm":1410,"elevenlabs":330,"total":1371}}
+ "timing_ms":{"vad":0.4,"stt":590,"ml":11,"llm":1410,"elevenlabs":330,"total":1371}}
 ```
 
 `feedback` (`term` is the term that was blamed on a 👎, else null)

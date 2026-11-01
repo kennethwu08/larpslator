@@ -8,10 +8,11 @@
   "use strict";
   let on = false;
 
-  function message(text, level, extra) {
+  function message(text, level, extra, tags) {
     if (!on) return;
     Sentry.withScope(scope => {
       scope.setTag("step", "dashboard");
+      if (tags) scope.setTags(tags);
       if (extra) scope.setExtras(extra);
       Sentry.captureMessage(text, level || "warning");
     });

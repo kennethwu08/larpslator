@@ -37,6 +37,8 @@ js/app.js           UI: renders events, wires up buttons (edit freely)
 js/api.js           backend client: the ONLY code that knows the protocol  ⚠ don't change without the backend
 js/mock.js          fake backend with the same API, for ?mock                ⚠ keep in sync with api.js
 js/monitoring.js    Sentry for the dashboard (DSN from the backend's /api/config)
+js/web-audio.js     web audio fallback: browser mic/speaker on /ws/web (only when WEB_AUDIO_FALLBACK=1)
+js/pcm-worklet.js   mic -> 16 kHz 16-bit PCM encoder (AudioWorklet + ScriptProcessor fallback)
 vendor/sentry.min.js @sentry/browser 8.55.0, kept locally
 vendor/chart.umd.js Chart.js 4.4.1, kept locally so it works on bad Wi-Fi
 ```

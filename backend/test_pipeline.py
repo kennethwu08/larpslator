@@ -81,7 +81,7 @@ def main_cli():
         tm = r["timing_ms"]
         ms = lambda v: "cached" if v == 0 else f"{v}ms"
         stage("vad", f"{tm['vad']}ms")
-        stage("whisper", f"{tm['whisper']}ms  [{r['lang']}] {r['source']!r}")
+        stage("speech", f"{tm['stt']}ms  [{r['lang']}] {r['source']!r}")
         if not r["source"]:
             print("  (empty transcript, skipped)\n")
             continue

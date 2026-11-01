@@ -15,8 +15,6 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
-      - key: OPENAI_API_KEY
-        sync: false
       - key: FEATHERLESS_API_KEY
         sync: false
       - key: ELEVENLABS_API_KEY
@@ -29,6 +27,8 @@ services:
         value: render
       - key: SENTRY_TRACES_SAMPLE_RATE
         value: "0.2"
+      - key: WEB_AUDIO_FALLBACK
+        value: "0"          # "1" turns on the browser mic/speaker fallback
       - key: LARPSLATOR_TOKEN
         generateValue: true   # the pairing code; read it in Render's Environment tab
       - key: TARGET_LANGUAGE

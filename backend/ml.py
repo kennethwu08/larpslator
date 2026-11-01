@@ -42,7 +42,7 @@ log = logging.getLogger("larpslator.ml")
 # Extra data files per field. The team filed the math glossary as academia.json (실수, 정수, 극한, 행렬, ...).
 DATA_ALIASES = {"math": ["academia"]}
 LANG_CODES = {"ko": "Korean", "ta": "Tamil", "en": "English", "es": "Spanish"}
-WHISPER_LANGS = {"english": "English", "korean": "Korean", "tamil": "Tamil", "spanish": "Spanish"}
+SPOKEN_LANGS = {"english": "English", "korean": "Korean", "tamil": "Tamil", "spanish": "Spanish"}  # from speech to text
 # A Korean one-syllable term (열, 근, 원) only counts when a particle or the end follows it, so 열 doesn't match 열심히.
 KO_FOLLOW = r"(?=$|[\s.,!?]|은|는|이|가|을|를|의|에|로|으로|와|과|도|만|부터|까지|에서|이다|입니다|이에요|예요)"
 
@@ -198,15 +198,15 @@ class LocalML:
         probs = self._masked(self.domain_ema, active)
         return max(probs, key=probs.get)
 
-    def whisper_prompt(self, active: set[str]) -> str:
-        """English jargon of the checked fields, so Whisper spells it right (free: same API call). Only English:
-        Korean words in the prompt could tip Whisper into detecting Korean for English speech."""
+    def keyterms(self, active: set[str]) -> list[str]:
+        """English jargon of the checked fields, for speech to text (spelled right, at no extra cost). Only English:
+        Korean words could tip the language detection to Korean for English speech."""
         terms = [t for d in FIELDS if d in active for t in self.glossary[d] if script_language(t) == "English"]
-        return ", ".join(dict.fromkeys(terms))[:600]
+        return list(dict.fromkeys(terms))[:100]
 
     def analyze(self, text: str, target: str, context: str, active: set[str], source_lang: str = "") -> dict:
-        """`source_lang` is Whisper's detected language ("english", "korean", ...); guessed from the script if empty."""
-        spoken = WHISPER_LANGS.get(source_lang.lower(), "") or script_language(text)
+        """`source_lang` is the detected spoken language ("english", "korean", ...); guessed from the script if empty."""
+        spoken = SPOKEN_LANGS.get(source_lang.lower(), "") or script_language(text)
         emb = self.embed([text])[0]
 
         probs = self.clf.predict_proba([emb])[0]

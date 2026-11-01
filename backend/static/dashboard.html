@@ -199,7 +199,7 @@ function fillRow(u) {
     ? `<div class="larp">${esc(u.source)}</div>${esc(u.larp.text)} <span class="larp-on">LARP</span>`
     : `${esc(u.source)}${u.larp ? ' <span class="larp-on">LARP</span>' : ""}`;
   tr.querySelector(".src").innerHTML = `${said}<div class="meta">#${u.id} · ${esc(u.lang)}` +
-    `${ms("whisper", t.whisper)}${ms("ml", t.ml)}</div>`;
+    `${ms("speech", t.stt)}${ms("ml", t.ml)}</div>`;
   const chips = (u.terms || []).map(x =>
     `<span class="chip" data-term="${esc(x.term)}" title="Wrong word? Click to try the next option">${esc(x.match)} → ${esc(x.choice)}</span>`).join("");
   tr.querySelector(".dst").innerHTML = `${esc(u.translation)}<div>${chips}</div>` +

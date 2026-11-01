@@ -1,6 +1,6 @@
 # Backend
 
-Badge mic audio → voice activity detection → Whisper → **local ML** → Featherless LLM → ElevenLabs → back to the badge, with a live dashboard.
+Badge mic audio → voice activity detection → speech to text (ElevenLabs Scribe) → **local ML** → Featherless LLM → ElevenLabs → back to the badge, with a live dashboard.
 
 **The LLM only translates.** Everything else (detecting the field, tone, finding jargon, choosing each jargon word's translation, learning from 👍/👎, trimming the context pack, the LARP phrase upgrades) runs locally for free in `ml.py`. The LLM gets one short plain-text request per sentence:
 
@@ -12,7 +12,7 @@ Text: Can you merge my branch before the kernel build?
 ```
 
 ```
-main.py               server + pipeline (VAD, Whisper, LLM, ElevenLabs, playback)
+main.py               server + pipeline (VAD, speech to text, LLM, ElevenLabs, playback)
 ml.py                 local ML: field, tone, jargon, learning from feedback
 seeds.json            built-in fallback data, used per context until data/ has a file for it
 static/dashboard.html dashboard (served at /)
@@ -59,6 +59,29 @@ python test_pipeline.py sample.wav --contexts math,larp      # only math checked
 
 It prints every stage's output and timing (field, tone, terms found, which context lines went to the LLM) and saves each translation as `out_<n>.wav`.
 
+## Web audio fallback (if the badge fails)
+
+The dashboard can be the translator itself: its **Web Audio** section uses the browser's mic and speaker, on the same
+pipeline as the badge (same 16 kHz audio, voice detection, speech to text with ElevenLabs Scribe, local ML, Featherless
+translation, ElevenLabs voice). Off by default.
+
+- **Turn on:** `WEB_AUDIO_FALLBACK=1` in `.env` (or Render's Environment tab), restart. **Off:** remove it or set `0`.
+- **Remove for good:** delete `web_audio.py`, `dashboard/js/web-audio.js`, `dashboard/js/pcm-worklet.js`, and the lines marked `WEB_AUDIO` in `main.py` and `dashboard/index.html`.
+- The mic needs `localhost` or https (`https://<laptop-ip>:8443` with `serve.py`, or the Render URL).
+
+**Test it:**
+```bash
+cd backend
+WEB_AUDIO_FALLBACK=1 python serve.py
+```
+1. Open http://localhost:8000. A **Web Audio** section is above the conversation (without the flag it isn't there).
+2. Press **Listen** and allow the microphone. The level meter moves when you talk.
+3. Say a sentence and pause. The transcript, then the translation, appear in the section and in the conversation (labeled **Web** when a badge is also connected), and the translation plays through the speakers. The mic ignores the speakers until 300 ms after playback.
+4. Press **Stop**: the sentence you were in the middle of is still translated.
+5. Errors to try: block the mic in the site settings ("Microphone access was denied…"); stop the backend while listening (three reconnect tries, then "Lost the connection to the backend…").
+
+**Automated tests:** `cd backend && python -m pytest tests` (feature flag on/off, listen → audio → stop through the real voice detector with mocked speech-to-text/LLM/TTS, a TTS failure not stopping the pipeline, the badge path).
+
 ## Badges
 
 The backend controls the badge. The dashboard's **Badge** panel lists every badge online. **Connect** picks the one whose mic and buttons are used (the first one online is connected automatically). It shows the badge's language, contexts, LARP, listening state, voice, battery, Wi-Fi, latency, firmware and whether it confirmed the latest settings, and has Identify (blink), volume and Disconnect.
@@ -93,8 +116,8 @@ Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fiel
 
 ## How it works
 
-1. **VAD.** `webrtcvad` checks every 30 ms frame. A sentence ends after 0.7 s of silence (or after 15 s). Blips under 0.4 s are dropped, because Whisper makes up text for them. Push-to-talk release ends a sentence immediately.
-2. **Whisper** (`whisper-1`) transcribes the sentence and detects its language. Its `prompt` lists the current field's jargon so terms are spelled right, which costs nothing extra.
+1. **VAD.** `webrtcvad` checks every 30 ms frame. A sentence ends after 0.7 s of silence (or after 15 s). Blips under 0.4 s are dropped, because speech to text invents words for them. Push-to-talk release ends a sentence immediately.
+2. **Speech to text: ElevenLabs Scribe** (`scribe_v2`, same key as the voice) transcribes the sentence and detects its language (Korean and Tamil too). The checked fields' jargon is sent as `keyterms` so it's spelled right ("kernel", not "colonel"). Featherless has no speech-to-text; a speech model run locally on the laptop was slower (2.9 s vs 0.6 s) and misheard jargon ("colonel" for "kernel") in testing.
 3. **Local ML** (`ml.py`, ~10 ms on CPU):
    - **Field:** MiniLM sentence embedding → LogisticRegression, trained at startup on the training sentences and glossary terms. Unchecked fields are masked out. Smoothed over the conversation so one odd sentence doesn't flip it.
    - **Tone:** `?` → question, `!` → excited, otherwise the nearest tone prototype by embedding (neutral if nothing is close).
@@ -119,7 +142,7 @@ Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fiel
 
 Every sentence logs its timing:
 ```
-utt 3 | vad 0.4ms | whisper 610ms | ml 11ms | llm 1400ms | elevenlabs 350ms | total 1351ms | cs/neutral | 'The kernel...' -> '커널이...' | terms {'kernel': '커널'}
+utt 3 | vad 0.4ms | stt 590ms | ml 11ms | llm 1400ms | elevenlabs 350ms | total 1351ms | cs/neutral | 'The kernel...' -> '커널이...' | terms {'kernel': '커널'}
 ```
 
 ## Host it on Render (optional)
@@ -135,7 +158,7 @@ utt 3 | vad 0.4ms | whisper 610ms | ml 11ms | llm 1400ms | elevenlabs 350ms | to
 
 Set `SENTRY_DSN` (Sentry → Project Settings → Client Keys) in `.env` and in Render's environment. Without it, Sentry is off and costs nothing.
 
-- **Each failing service is its own issue.** Whisper, local ML, translation (LLM), ElevenLabs, voice cloning and badge playback errors are reported with a `step` tag (`whisper`, `local_ml`, `translation`, `elevenlabs`, `voice_clone`, `badge_playback`). A sentence's error is reported once. Using the fallback LLM is reported as a warning.
+- **Each failing service is its own issue.** Speech to text, local ML, translation (LLM), ElevenLabs, voice cloning and badge playback errors are reported with a `step` tag (`speech_to_text`, `local_ml`, `translation`, `elevenlabs`, `voice_clone`, `badge_playback`). A sentence's error is reported once. Using the fallback LLM is reported as a warning.
 - **Traces:** each sentence is a trace (`translate sentence`) with a span per stage, so the Performance view shows which step is slow. `SENTRY_TRACES_SAMPLE_RATE` (default 0.2).
 - **Unhandled server errors** are captured automatically (FastAPI integration). Log lines become breadcrumbs on issues, not issues of their own.
 - **Dashboard:** `@sentry/browser` (in `dashboard/vendor/`) uses the same DSN via `/api/config`. It reports JavaScript errors, the WebSocket dropping, commands sent while disconnected, and rejected pairing codes.

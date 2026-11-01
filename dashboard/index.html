@@ -121,6 +121,19 @@
       <h2 id="feed-title">Conversation</h2>
       <span class="secondary" id="feed-state">Paused</span>
     </div>
+    <!-- WEB_AUDIO: browser mic/speaker fallback, shown only when the backend has WEB_AUDIO_FALLBACK=1 -->
+    <section class="card web-audio" id="web-audio" hidden aria-labelledby="wa-title">
+      <div class="wa-head">
+        <div><h3 id="wa-title">Web Audio</h3><p class="secondary small">Use this browser's mic and speaker instead of the badge.</p></div>
+        <button id="wa-listen" class="listen wa-listen" aria-pressed="false"><svg class="icon"><use href="#i-mic"/></svg><span id="wa-listen-label">Listen</span></button>
+      </div>
+      <div class="wa-meter" id="wa-meter-wrap" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="wa-meter"></div></div>
+      <p id="wa-status" class="secondary small" role="status">Stopped</p>
+      <p id="wa-error" class="error" role="alert" hidden></p>
+      <label class="wa-volume" for="wa-volume"><span class="small">Volume</span><input id="wa-volume" type="range" min="0" max="100" step="5" value="80"></label>
+      <div id="wa-list" aria-live="polite"><p class="secondary small" id="wa-empty">Sentences you say here appear here, with their translation.</p></div>
+    </section>
+
     <div class="group setup" id="setup" hidden>
       <button class="row link" id="setup-badge"><span class="step" id="step-badge"></span><span>Connect your badge</span><span class="value" id="setup-badge-value"></span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
       <button class="row link" id="setup-voice"><span class="step" id="step-voice"></span><span>Set up your voice</span><span class="value" id="setup-voice-value"></span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
@@ -224,6 +237,8 @@
 <script src="vendor/sentry.min.js"></script>
 <script src="js/mock.js"></script>
 <script src="js/monitoring.js"></script>
+<script src="js/pcm-worklet.js"></script>  <!-- WEB_AUDIO -->
+<script src="js/web-audio.js"></script>    <!-- WEB_AUDIO -->
 <script src="js/app.js"></script>
 </body>
 </html>
