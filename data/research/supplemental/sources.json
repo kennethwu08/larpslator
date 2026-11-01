@@ -1,0 +1,107 @@
+[
+  {
+    "id": "python-ko-expanded",
+    "url": "https://docs.python.org/ko/3.12/glossary.html",
+    "domain": "cs",
+    "language": "Korean",
+    "authority": "Python project documentation",
+    "candidates": [
+      {
+        "term": "abstract base class",
+        "preferred": "추상 베이스 클래스",
+        "definition_en": "A class specifying an interface for related types."
+      },
+      {
+        "term": "context manager",
+        "preferred": "컨텍스트 관리자",
+        "definition_en": "An object managing entry and exit around a block."
+      },
+      {
+        "term": "descriptor",
+        "preferred": "디스크립터",
+        "definition_en": "An object customizing attribute access."
+      },
+      {
+        "term": "decorator",
+        "preferred": "데코레이터",
+        "definition_en": "A callable transforming a function or class definition."
+      },
+      {
+        "term": "namespace",
+        "preferred": "이름 공간",
+        "definition_en": "A mapping connecting names to objects."
+      },
+      {
+        "term": "garbage collection",
+        "preferred": "가비지 수거",
+        "definition_en": "Reclaiming storage occupied by unreachable objects."
+      }
+    ]
+  },
+  {
+    "id": "pgc-ko-expanded",
+    "url": "https://pgc.kr/pickleball/glossary",
+    "domain": "pickleball",
+    "language": "Korean",
+    "authority": "Independent community guide; not governing-body rules",
+    "candidates": [
+      {
+        "term": "reset",
+        "preferred": "리셋",
+        "definition_en": "A soft reply intended to slow an attacking exchange."
+      },
+      {
+        "term": "punch volley",
+        "preferred": "펀치 발리",
+        "definition_en": "A compact attacking volley."
+      },
+      {
+        "term": "drop serve",
+        "preferred": "드롭 서브",
+        "definition_en": "A serve struck after the dropped ball bounces."
+      },
+      {
+        "term": "poaching",
+        "preferred": "포칭",
+        "definition_en": "Intercepting a ball on a partner’s side."
+      },
+      {
+        "term": "edge guard",
+        "preferred": "에지 가드",
+        "definition_en": "A protective part around a paddle edge."
+      },
+      {
+        "term": "double bounce",
+        "preferred": "더블 바운드",
+        "definition_en": "The ball bouncing twice on one side; distinct from the opening two-bounce rule."
+      }
+    ]
+  },
+  {
+    "id": "tennis-ko-expanded",
+    "url": "https://kocw-n.xcache.kinxcdn.com/data/document/2024/chuncheon/leekichung0206/1.pdf",
+    "domain": "tennis",
+    "language": "Korean",
+    "authority": "University course handout",
+    "candidates": []
+  },
+  {
+    "id": "tamil-ml-education-2026",
+    "url": "https://jier.um.edu.my/index.php/tamilperaivu/article/view/75027",
+    "domain": "cs",
+    "language": "Tamil",
+    "authority": "University of Malaya journal publisher",
+    "candidates": [
+      {
+        "term": "machine learning",
+        "preferred": "இயந்திர கற்றல்",
+        "definition_en": "Methods that learn patterns from data."
+      },
+      {
+        "term": "artificial intelligence",
+        "preferred": "செயற்கை நுண்ணறிவு",
+        "definition_en": "Computational methods for tasks requiring intelligent behavior."
+      }
+    ]
+  }
+]

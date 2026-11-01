@@ -1,5 +1,5 @@
 {
-  "status": "draft_data_ready; language not exposed by current application",
+  "status": "draft_data_available; current backend lists Tamil; human review pending",
   "glossaries": [
     {
       "domain": "cs",
@@ -18,6 +18,7 @@
     }
   ],
   "review": "Tamil terminology remains assistant-authored and pending human review",
-  "backend_change_required": "Backend owner must add Tamil to supported language choices and verify translation/voice support. Restart backend to reload glossary data.",
-  "protected_files_changed": false
+  "backend_change_required": "No language-list addition required in the inspected backend. Restart backend after runtime data changes; verify translation, speech and deployed data separately.",
+  "protected_files_changed": false,
+  "reverse_tamil_glossary_coverage": "No Tamil-script source terms in cs, tennis or pickleball main glossaries."
 }

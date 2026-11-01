@@ -18,11 +18,13 @@ No baseline failure, translation improvement, or demo sentence has been verified
 
 ## Handoff to teammates
 
-Role B can load the selected Tamil glossary as an English-to-Tamil map and compare the same
+The current backend already loads selected Tamil files and lists Tamil as a target.
+Role B can compare the same
 English sentences with general/no glossary versus correct domain/glossary settings. Record
 latency, API errors, and human judgments separately. Word presence alone is not accuracy.
 
-Role C should use cs, tennis, pickleball, general as proposed labels and train on independent
+This research pack covers cs, tennis, pickleball and general; the application also
+supports math. Role C should preserve that application domain contract and use independent
 English utterances. Do not train on eval-ta.jsonl or its paraphrases. Feedback choices need
 validated Tamil alternatives and local persistence.
 

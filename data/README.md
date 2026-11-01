@@ -1,109 +1,81 @@
-# Data (Roles D + C)
-glossaries/<domain>.json   term -> list of candidate translations (15-20 terms per domain)
-train.jsonl                training sentences for the domain classifier
-eval.jsonl                 evaluation set (20 terms x 2 sentences, with correct translations)
-Domains: academia, cs, med, general
+# Larpslator research and runtime data
 
-## Korean terminology research (2026-11-01)
+## Current application contract
 
-Research domains for this collection: cs, pickleball, tennis. These are additional
-research labels; the original classifier plan above still lists academia/cs/med.
-No classifier, dashboard domain selector, or backend logic was changed.
+The fields are `cs`, `tennis`, `pickleball`, and `math`, with `general` as fallback.
+`larp` is a style, not a subject. `academia.json` is an alias loaded for math;
+`med.json` is a legacy file and is not loaded by the current application.
+The authoritative format is documented in `docs/messages.md` (read-only for this role).
 
-- research/TERMS.md: readable table of 60 English–Korean term entries (20/domain).
-- research/terms.en-ko.jsonl: definitions, preferred terms, alternative spellings,
-  evidence status, review status, and direct source URLs.
-- research/sources.json: seven source records, including authority notes.
-- research/collection_report.json: actual fetch outcomes, timestamps, hashes,
-  and extraction failures. Failed sources are never counted as scraped.
-- research/spelling_checks.jsonl: automated spelling-presence checks, not
-  verification of meaning or translation quality.
-- glossaries/<domain>.json: term -> candidate Korean translations (list), as
-  proposed in the original data format.
-- glossaries/selected/<domain>-ko.json: term -> preferred Korean string, compatible
-  with backend/translate.py's --glossary input. Alternatives are synonyms or
-  spelling variants, not deliberately incorrect distractors.
+The backend loads these files at startup, in preference order:
 
-### Proposed glossary handoff (backend implementation required)
+1. `glossaries/<field>.json` (then aliases).
+2. `glossaries/selected/<field>-<lang>.json`.
+3. Built-in seed terms and alternatives.
 
-These are proposed commands for the backend teammate after implementing a translator; no backend translator is included in this research contribution:
+Mixed glossary shapes are intentional and supported. A plain Korean list attached
+to an English term supplies Korean translations. A language map such as
+`{"Korean": ["키친"], "Tamil": ["கிச்சன்"]}` explicitly names the target.
+Selected files are flat `English term -> preferred translated string` maps.
+The earliest option wins preference; selected exports do not override an earlier
+main-file option. Backend restart is required to reload changed runtime data.
 
-~~~powershell
-python backend/translate.py --text "Wait for the ball to bounce before hitting it from the kitchen." --target Korean --domain pickleball --glossary data/glossaries/selected/pickleball-ko.json
-python backend/translate.py --text "Love means zero in tennis." --target Korean --domain tennis --glossary data/glossaries/selected/tennis-ko.json
-~~~
+## Tamil readiness
 
-Use a Korean-speaking teammate to assess whether each translation is natural and
-preserves the intended sporting meaning.
+45 draft English-to-Tamil terms are provided (15 per domain across cs, tennis,
+pickleball). The main glossaries and selected Tamil exports are checked by
+`research/audit_data.py`. The current backend exposes Tamil; older notes saying
+that it still must be added to the language list were historical and are superseded.
+This is not proof of end-to-end speech or translation quality. Tamil terminology
+and reference sentences still require a Tamil-speaking reviewer.
 
-### Reproduce source collection
+The current Tamil contribution is English-to-Tamil. It does not contain Tamil
+source-script terms for reverse glossary matching. Do not claim that this dataset
+provides bidirectional Tamil jargon coverage.
 
-~~~powershell
-python data/research/collect_sources.py
-~~~
+## Research collections
 
-The collector needs only Python's standard library for HTML. Optionally install
-pypdf to check extractable PDF text. It fetches only the listed sources, checks
-robots.txt, limits file size, retains certificate verification, and pauses between
-requests. It saves metadata and term-presence checks; it does not save full pages,
-bulk-download a website, or rewrite curated definitions.
+- `research/terms.en-ko.jsonl`: 60 original English–Korean term records with
+  definitions, source links and evidence/review status; `research/TERMS.md` is readable.
+- `research/sources.json` and `collection_report.json`: original bounded collection
+  and actual retrieval outcomes. Search indexing is not a successful direct scrape.
+- `research/tamil/`: original academic metadata, labeled assistant-authored Tamil
+  summaries, and four licensed English sports full texts. English sports papers
+  are not Tamil-language publications.
+- `glossaries/tamil-drafts.jsonl`: original 45 authored Tamil term drafts.
+- `eval-ta.jsonl`: 90 held-out English utterances with draft Tamil references;
+  not a gold-standard set and never a training set.
+- `research/supplemental/`: additional source metadata, spelling checks and
+  pending-review candidates. These are not silently promoted into live choices.
+- `research/data-audit.json` and `DATA_AUDIT.md`: current structural audit and findings.
 
-### Evidence and limitations
+## Reproduce
 
-This is a bounded starter terminology dataset, not all Korean documents on these
-subjects. Definitions are original short paraphrases written during research.
-Source links document their terminology basis; they are not licenses to reproduce
-the full source publications. No full article or PDF text is redistributed.
+```powershell
+python data/research/audit_data.py
+python data/research/supplemental/collect.py
+```
 
-All human_review_status values are pending. Before the demo, a Korean-speaking
-teammate should approve terminology and add natural utterance-level translations.
-None of these entries has been tested against your plain-translation baseline;
-do not describe them as proven baseline failures. There is no generated training
-or evaluation corpus in this collection.
+These tools use the Python standard library and do not require API keys.
+The supplemental collector checks robots.txt, limits response size, retains TLS
+verification, and records blocked/failed sources. It does not archive full pages
+or journal PDFs. Definitions are short authored paraphrases; spelling presence
+does not establish translation correctness. Read review and license notes.
 
-Five tennis entries use indexed KOCW text only: direct retrieval failed TLS
-hostname verification. The collector does not bypass that failure. The 2020
-KTA/ITF PDF is a historical reference and yielded no Korean text with basic PDF
-extraction; do not use it as a current rulebook or claim it was successfully
-text-scraped. See the report for live outcomes, including robots skips.
+Original collection commands remain available:
+`python data/research/collect_sources.py` and
+`python data/research/tamil/collect_papers.py`.
+Historical reports keep their original outcomes and are not evidence of a new run.
 
-The pickleball source is an independent specialist guide, not an official
-governing-body glossary. Korean spellings may vary. Erne was intentionally omitted:
-the retrieved source used an inconsistent spelling. Do not equate the two-bounce
-rule with a double-bounce fault. Rule details and scoring formats must be checked
-against the rules of the actual event; glossary entries are short word-sense aids.
+## Deployment boundary
 
-Recommended demo candidates: dictionary/key (cs), kitchen/drive/stacking/paddle
-(pickleball), love/break point/let/set (tennis). Test these as hypotheses rather
-than assuming a plain translator will get them wrong.
+`FASTAPI_ENTRYPOINT_NOT_FOUND` occurs before application data loading. Changing
+JSON cannot fix the selected framework/root directory on Vercel. The frontend
+project needs the `dashboard` root and static-site settings; the Python backend
+needs its own deliberate deployment. No deployment setting or protected file was
+changed by this data audit. The Vercel project inspected earlier pointed to
+JustinC-08/larpslator, while earlier dashboard work was pushed to
+kennethwu08/larpslator; the deployment owner must verify which repository contains
+the intended code before redeploying.
 
-## Tamil academic research (2026-11-01)
-
-See research/tamil/README.md for the new Tamil research collection.
-It contains two Tamil computing article records and four English academic sports
-papers with clearly labeled, assistant-authored Tamil summaries (approved fallback).
-Only the four English articles have licensed full text saved. All Tamil summaries
-await human review. See the collection report and candidate list for access gaps.
-The earlier Korean data remains separate and must not be used as Tamil terminology.
-
-## Tamil draft research dataset
-
-See data/TAMIL_REVIEW.md and data/TEAM_HANDOFF_TAMIL.md. There are 45 draft terms
-(15 per topic) and 90 held-out English utterances with draft Tamil references in
-data/eval-ta.jsonl. Human review has not occurred. Academic sources provide context;
-they do not validate the authored translations. data/domains-ta.json proposes labels
-for the ML teammate; no classifier was trained. Application code changes were undone
-so this contribution remains research-only.
-
-## Tamil application glossary handoff
-
-Tamil draft choices have now been added to the contract-compatible
-glossaries/cs.json, tennis.json, and pickleball.json files under the exact
-language key "Tamil". Each domain has 15 Tamil terms. Existing entries and
-existing Korean choices were preserved. Standalone selected/*-ta.json files
-remain as research exports.
-
-This is DATA readiness only. Tamil is not in the current backend or mock
-language selector. Only the backend owner should enable the target and verify
-translation and speech output. Restart the backend after loading new glossary
-data. All Tamil wording still needs a Tamil-speaking review.
+API keys belong in backend environment settings, never these datasets.

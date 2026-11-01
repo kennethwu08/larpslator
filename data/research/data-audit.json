@@ -1,0 +1,43 @@
+{
+  "checked_at_utc": "2026-11-01T20:45:48.754474+00:00",
+  "scope": "data only; structural consistency, not semantic translation or deployed API validation",
+  "status": "pass",
+  "json_and_jsonl_files_checked": 29,
+  "jsonl_rows_parsed": 269,
+  "errors": [],
+  "preference_conflicts": [],
+  "glossary_coverage_before_builtin_seeds": {
+    "cs": {
+      "unique_source_terms": 80,
+      "English_to_Tamil": 15,
+      "English_to_Korean": 20,
+      "Tamil_source_terms": 0
+    },
+    "tennis": {
+      "unique_source_terms": 25,
+      "English_to_Tamil": 15,
+      "English_to_Korean": 20,
+      "Tamil_source_terms": 0
+    },
+    "pickleball": {
+      "unique_source_terms": 21,
+      "English_to_Tamil": 15,
+      "English_to_Korean": 20,
+      "Tamil_source_terms": 0
+    },
+    "math": {
+      "unique_source_terms": 36,
+      "English_to_Tamil": 0,
+      "English_to_Korean": 0,
+      "Tamil_source_terms": 0
+    }
+  },
+  "evaluation_rows": 90,
+  "warnings": [
+    "Tamil wording and evaluation references await human review.",
+    "No Tamil-source terms: reverse Tamil glossary matching is not covered by this contribution.",
+    "med.json is legacy and not loaded; academia.json is the supported math alias.",
+    "FASTAPI_ENTRYPOINT_NOT_FOUND is a deployment configuration failure, not a data parse failure.",
+    "Vercel was connected to JustinC-08/larpslator; earlier dashboard push targeted kennethwu08/larpslator. Verify intended repository with deployment owner."
+  ]
+}
