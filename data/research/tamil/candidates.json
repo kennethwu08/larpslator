@@ -1,0 +1,20 @@
+[
+  {
+    "url": "https://pulamejournal.com/index.php/pulam/article/view/157",
+    "title": "பன்னாட்டு ஆய்வுத் தரவினைக் கொண்டு பைத்தான்வழி விக்கிப்பீடியாவில் கட்டுரை உருவாக்கம்",
+    "title_en": "Python-based Wikipedia article creation with international research data",
+    "status": "search-index candidate; direct request returned 403; not counted as collected"
+  },
+  {
+    "url": "https://ejournal.um.edu.my/index.php/tamilperaivu/article/view/64179",
+    "title": "தமிழ் மொழியில் தற்காலத் தொழில்நுட்பப் பயன்பாடு",
+    "title_en": "The Use of Modern Technology in Tamil Language",
+    "doi": "10.22452/JTP.vol14no1.9",
+    "status": "search-index candidate; direct request timed out; technology education, not core CS; not counted as collected"
+  },
+  {
+    "url": "https://www.tamilvu.org/library/kanithamizh_valarchiyum_savalgalum/pdf/Volume_2_Combined_Book.pdf",
+    "title": "கணினித் தமிழ் வளர்ச்சியும் சவால்களும் — conference proceedings, volume 2",
+    "status": "proceedings discovery source; direct request returned 403; not counted as an individual collected paper"
+  }
+]

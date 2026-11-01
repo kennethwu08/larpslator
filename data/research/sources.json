@@ -1,0 +1,65 @@
+[
+  {
+    "id": "python-ko",
+    "domain": "cs",
+    "url": "https://docs.python.org/ko/3.12/glossary.html",
+    "publisher": "Python Software Foundation and Korean translators",
+    "title": "Python Korean glossary",
+    "kind": "html",
+    "authority": "project documentation"
+  },
+  {
+    "id": "mdn-ko",
+    "domain": "cs",
+    "url": "https://developer.mozilla.org/ko/docs/Glossary",
+    "publisher": "Mozilla Contributors",
+    "title": "MDN Korean web glossary",
+    "kind": "html",
+    "authority": "project documentation"
+  },
+  {
+    "id": "pickle-glossary",
+    "domain": "pickleball",
+    "url": "https://totalpickleball.kr/guide/glossary/",
+    "publisher": "Total Pickleball",
+    "title": "Korean pickleball glossary",
+    "kind": "html",
+    "authority": "independent specialist guide; not a governing rulebook"
+  },
+  {
+    "id": "pgc-pickle",
+    "domain": "pickleball",
+    "url": "https://pgc.kr/pickleball",
+    "publisher": "PGC",
+    "title": "Korean pickleball learning and terminology index",
+    "kind": "html",
+    "authority": "community learning guide"
+  },
+  {
+    "id": "tennis-kocw",
+    "domain": "tennis",
+    "url": "https://kocw-n.xcache.kinxcdn.com/data/document/2024/chuncheon/leekichung0206/1.pdf",
+    "publisher": "KOCW / Chuncheon course materials",
+    "title": "테니스 기초 이론 #01",
+    "kind": "pdf",
+    "authority": "university teaching material"
+  },
+  {
+    "id": "tennis-kta",
+    "domain": "tennis",
+    "url": "https://www.kortennis.or.kr/upload/TAH/docs/ITF_Rules_of_Tennis_2020.pdf",
+    "publisher": "Korea Tennis Association / ITF",
+    "title": "2020 Rules of Tennis, Korean-English",
+    "kind": "pdf",
+    "authority": "historical official rules; terminology reference, not current rules"
+  },
+  {
+    "id": "tennis-on",
+    "domain": "tennis",
+    "url": "https://www.on.com/ko-kr/stories/how-does-tennis-scoring-work",
+    "publisher": "On / On Korea",
+    "title": "Korean tennis scoring and terminology guide",
+    "kind": "html",
+    "authority": "original brand educational guide; not official rules"
+  }
+]

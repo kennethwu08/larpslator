@@ -1,0 +1,18 @@
+{
+  "language": "ta",
+  "language_name": "Tamil",
+  "domain_labels": [
+    "cs",
+    "tennis",
+    "pickleball",
+    "general"
+  ],
+  "fallback_domain": "general",
+  "glossaries": {
+    "cs": "data/glossaries/selected/cs-ta.json",
+    "tennis": "data/glossaries/selected/tennis-ta.json",
+    "pickleball": "data/glossaries/selected/pickleball-ta.json"
+  },
+  "status": "draft terminology; human review pending",
+  "classifier_status": "No trained classifier in repository; labels provided for Role C"
+}
