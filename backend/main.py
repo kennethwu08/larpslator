@@ -440,6 +440,7 @@ class State:
         self.badges: dict[str, Badge] = {}      # every badge online, by id
         self.active_badge: str | None = None    # the one the dashboard connected; only its mic and buttons count
         self.badge_seq = 0
+        self.badge_names: dict[str, str] = {}   # names given on the dashboard; win over what the badge reports
         self.config_v = 0                       # bumped whenever badge_config() changes
         self.last_config: dict | None = None
         self.dashboards: set[WebSocket] = set()
@@ -465,7 +466,13 @@ class State:
                 "voice_setup": self.recording is not None}
 
     def badges_info(self) -> list[dict]:
-        return [b.public(b.id == self.active_badge, self.config_v) for b in self.badges.values()]
+        out = []
+        for b in self.badges.values():
+            info = b.public(b.id == self.active_badge, self.config_v)
+            if b.id in self.badge_names:
+                info["name"] = self.badge_names[b.id]
+            out.append(info)
+        return out
 
     def badge_mode(self) -> str:
         fields = [d for d in FIELDS if d in self.active]
@@ -643,7 +650,7 @@ async def activate_badge(badge_id: str | None):
 
 
 async def handle_badge_command(msg: dict):
-    """Dashboard controls for badges: connect / disconnect / identify / volume."""
+    """Dashboard controls for badges: connect / disconnect / identify / rename / volume."""
     action, badge = msg.get("action"), state.badges.get(msg.get("id") or state.active_badge or "")
     if action == "connect" and badge:
         await activate_badge(badge.id)
@@ -651,6 +658,9 @@ async def handle_badge_command(msg: dict):
         await activate_badge(None)
     elif action == "identify" and badge:
         await send_to_badge(badge, {"t": "identify"})   # badge blinks its LED / beeps
+    elif action == "rename" and badge and isinstance(msg.get("name"), str) and msg["name"].strip():
+        state.badge_names[badge.id] = msg["name"].strip()[:40]
+        await send_to_badge(badge, {"t": "name", "value": state.badge_names[badge.id]})
     elif action == "volume" and badge and isinstance(msg.get("value"), (int, float)):
         badge.info["volume"] = max(0, min(100, int(msg["value"])))
         await send_to_badge(badge, {"t": "volume", "value": badge.info["volume"]})

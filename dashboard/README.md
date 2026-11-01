@@ -13,6 +13,17 @@ The app people see during the demo: what the badge heard, the translation, which
 
 The **MOCK DATA** pill in the header tells you which one you're looking at. The backend's own minimal test page is at `http://localhost:8000/reference`.
 
+## Design
+
+Modeled on iOS Settings (the AirPods page): the left column is the badge page, with the device and its
+battery ring, then grouped rows: Translation, Contexts, Voice, Badge, About, Disconnect, Session.
+Conversation in the middle, translation details on the right. Light and dark mode follow the system.
+
+- **No slogans or taglines.** Every piece of text says what something is or does.
+- iOS system colors and type; SVG icons (no emoji/unicode symbols as icons); one animation at most (the listening icon).
+- Grouped rows, switches for on/off, sheets (`<dialog>`) for longer flows (voice setup, notes).
+- Accessibility: visible focus rings, labels on icon buttons, status not by color alone, `prefers-reduced-motion`.
+
 ## Files
 
 ```

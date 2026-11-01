@@ -87,6 +87,7 @@
     /** Blink/beep the badge so you can tell which one it is. */
     identifyBadge(id) { this._send({ t: "badge", action: "identify", id }); }
     setBadgeVolume(id, value) { this._send({ t: "badge", action: "volume", id, value }); }
+    renameBadge(id, name) { this._send({ t: "badge", action: "rename", id, name }); }
 
     // voice setup from the badge mic
     voiceRecordOnBadge(name) { this._send({ t: "voice", action: "record", name }); }

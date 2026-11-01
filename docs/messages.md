@@ -31,6 +31,7 @@ Several badges can be online; only the one **connected** on the dashboard is use
 - `{"t":"ping"}`: every 5 s; answer with `pong`.
 - `{"t":"identify"}`: blink the LED / beep so the user can tell which badge this is.
 - `{"t":"volume","value":70}`: speaker volume 0-100.
+- `{"t":"name","value":"Bernard's Badge"}`: the user renamed the badge on the dashboard (store it if you like; the dashboard name wins either way).
 - Binary frames: translated speech to play, sent in 100 ms frames (3200 bytes) at about real time.
   The server never starts a new clip until the previous one has finished plus 300 ms.
   The badge should mute its mic while playing; the server also ignores mic audio during that window.
@@ -50,6 +51,7 @@ Several badges can be online; only the one **connected** on the dashboard is use
 {"t":"badge","action":"disconnect"}                // use no badge (it stays online)
 {"t":"badge","action":"identify","id":"LC-7F3A"}   // make it blink
 {"t":"badge","action":"volume","id":"LC-7F3A","value":70}
+{"t":"badge","action":"rename","id":"LC-7F3A","name":"Bernard's Badge"}
 ```
 
 ## Voice setup over HTTP (browser microphone)

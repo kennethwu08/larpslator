@@ -157,6 +157,7 @@
     connectBadge(id) { if (this.badges[id]) { this.s.activeBadge = id; this._status(); } }
     disconnectBadge() { this.s.activeBadge = null; this._status(); }
     identifyBadge(id) { console.log(`[mock] ${id} blinks`); }
+    renameBadge(id, name) { if (this.badges[id] && name.trim()) { this.badges[id].name = name.trim().slice(0, 40); this._status(); } }
     setBadgeVolume(id, value) { if (this.badges[id]) { this.badges[id].volume = Math.max(0, Math.min(100, value)); this._status(); } }
 
     voiceRecordOnBadge(name) {
