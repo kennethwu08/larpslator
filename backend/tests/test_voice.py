@@ -56,3 +56,19 @@ def test_forgetting_only_deletes_clones_made_here(app_main, monkeypatch, tmp_pat
         assert client.delete(f"/api/voice/{MINE}" + TOKEN).status_code == 200
         assert client.delete("/api/voice/SomeoneElsesVoice1" + TOKEN).status_code == 200
     assert deleted == [MINE] and app_main.clones_made_here() == []
+
+
+def test_clone_request_sends_labels_as_a_dict(app_main, monkeypatch, tmp_path):
+    """The SDK sends labels="null" when they're left out, and ElevenLabs answers 400 invalid_labels."""
+    monkeypatch.setattr(app_main, "CLONES_FILE", tmp_path / "clones.json")
+    sent = {}
+
+    def fake_request(path, method, data=None, files=None, **kw):
+        sent.update(data)
+        raise RuntimeError("stop before the network")
+    monkeypatch.setattr(app_main.eleven_client.voices.ivc._raw_client._client_wrapper.httpx_client, "request", fake_request)
+    try:
+        app_main.create_clone("Kenneth", b"RIFF")
+    except RuntimeError:
+        pass
+    assert json.loads(sent["labels"]) == {}

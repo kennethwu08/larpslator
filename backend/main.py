@@ -401,6 +401,7 @@ def create_clone(name: str, wav: bytes) -> str:
     r = eleven_client.voices.ivc.create(
         name=f"Larpslator - {name}", files=[("voice-setup.wav", wav, "audio/wav")],
         remove_background_noise=True, description="Created by Larpslator voice setup",
+        labels={},  # required: the SDK otherwise sends "null", which ElevenLabs rejects (400 invalid_labels)
     )
     CLONES_FILE.parent.mkdir(exist_ok=True)
     CLONES_FILE.write_text(json.dumps(clones_made_here() + [r.voice_id]))
