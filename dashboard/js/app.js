@@ -5,6 +5,7 @@
   const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const icon = name => `<svg class="icon"><use href="#i-${name}"/></svg>`;
   const LABELS = { pickleball: "Pickleball", tennis: "Tennis", cs: "Computer Science", math: "Math", general: "Everyday" };
+  const LANG_TAGS = { Korean: "ko", English: "en", Tamil: "ta", Spanish: "es", French: "fr", "Mandarin Chinese": "zh", Japanese: "ja", German: "de" };
   const larp = Larp.connect();
 
   let status = null, packs = [], micRecording = null, uploading = false, toastTimer;
@@ -311,7 +312,7 @@
       <div class="lang">${esc(cap(u.lang))} → ${esc(u.target)}</div>
       <div class="said">${highlight(u.source || "", terms)}</div>
       ${larpLine}
-      <div class="heard" lang="${esc(u.target === "Korean" ? "ko" : "")}">${esc(u.translation)}</div>
+      <div class="heard" lang="${esc(LANG_TAGS[u.target] || "")}">${esc(u.translation)}</div>
       ${terms.length ? `<div class="chips">${terms.map(x =>
         `<button class="chip" data-term="${esc(x.term)}" title="Wrong? Try the next translation">${esc(x.match)}<span class="to">→</span>${esc(x.choice)}</button>`).join("")}</div>` : ""}
       <div class="utt-foot">

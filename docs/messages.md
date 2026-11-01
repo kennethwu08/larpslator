@@ -146,27 +146,41 @@ Several badges can be online; only the one **connected** on the dashboard is use
 ```
 
 ## Data files (read from `data/` at startup; restart the backend after changing them)
-The contexts themselves are fixed in `backend/ml.py`: `pickleball`, `tennis`, `cs`, `math` (fields) and `larp` (style),
-plus `general` as the classifier's everyday-speech class. For each one, a file in `data/` replaces the built-in fallback.
+The contexts are fixed in `backend/ml.py`: `pickleball`, `tennis`, `cs`, `math` (fields) and `larp` (style), plus
+`general` for everyday speech. Languages: Korean, English, Tamil (+ Spanish, French, Mandarin, Japanese, German).
 
-### Glossaries (`data/glossaries/<context>.json`, e.g. `tennis.json`)
-Term -> candidate translations, best first. Either a list (one target language) or one list per language:
+### Glossaries: both directions, any language
+For each field the backend merges, in this order (earlier files win the option order, later ones add terms and options):
+1. `data/glossaries/<field>.json` (and aliases: **`academia.json` is read as math**)
+2. `data/glossaries/selected/<field>-<lang>.json` (`term -> one preferred translation`, e.g. `selected/cs-ko.json`)
+3. the built-in `backend/seeds.json` (adds "wrong meaning" options so 👎 has something to switch to)
+
+A term is used when it's in the **spoken** language and has options in the **target** language. The spoken language
+of a term comes from its script: Hangul = Korean, Tamil script = Tamil, otherwise English.
 ```json
-{"kernel": {"Korean": ["커널", "알맹이"], "Spanish": ["núcleo", "grano"]},
- "thread": ["스레드", "실"]}
+{"kitchen": {"Korean": ["키친", "논발리존"], "Tamil": ["கிச்சன்"]},   // English speech -> Korean or Tamil
+ "set":     ["세트"],                                                // plain list: language from its script (Korean)
+ "실수":    ["real number", "mistake"]}                               // Korean speech -> English (best first)
 ```
-Pick terms a plain translator gets wrong, especially ones shared across contexts ("set" in tennis vs math, "serve", "court").
+- Best translation first; later options are what 👎 switches to (for Korean->English, list the wrong everyday meanings).
+- An English term with a plain list of Latin-script words is ambiguous (English? Spanish?) and skipped: use `{"Spanish": [...]}`.
+- Korean terms match with particles attached (배열의, 캐시에); one-syllable terms (열, 근) only before a particle or the end, so 열 doesn't match 열심히.
+- `med.json` is not loaded (no medicine context).
 
-### Training sentences (`data/train.jsonl`)
-One per line. For any context that has rows here, they replace the built-in sentences for that context:
+### Training sentences (`data/train.jsonl`, optional)
+One per line; for any field that has rows here, they replace the built-in English sentences for that field:
 ```json
 {"text": "She won the first set after a long deuce game.", "domain": "tennis"}
-{"text": "Where should we get dinner tonight?", "domain": "general"}
 ```
+The field classifier's embedding model is English-only; Korean and Tamil speech is placed by glossary hits.
 
-### LARP (`data/larp.json`)
+### Evaluation sets (read by `backend/evaluate.py`, never trained on)
+- `data/eval-ta.jsonl`: English -> Tamil sentences with `expected_terms_ta` / `match_fragments_ta`.
+- `data/glossaries/CHECK.md`: the table rows (field, Korean term, correct English, wrong meanings, Korean sentence, English).
+
+### LARP (`data/larp.json`, optional)
 Any key given replaces the built-in one. `{field}` in `style` becomes the detected field's name. A filler with a
-trailing comma (`"like,"`) is only removed when a comma follows it, so "I like tennis" is left alone.
+trailing comma (`"like,"`) is only removed when a comma follows it. LARP phrase rules apply to English speech.
 ```json
 {"style": "Make the speaker sound like a confident, seasoned {field} expert: polished and impressive, same meaning, about the same length.",
  "fillers": ["um", "uh", "like,", "you know,", "kind of"],

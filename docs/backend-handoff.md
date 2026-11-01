@@ -53,6 +53,8 @@ badge mic ─► voice detection ─► Whisper ─► local ML ─► Featherle
 
 **Tested:** server, WebSockets, dashboard (mock and real), voice detection on real audio, local ML (field detection, jargon, LARP, learning), voice setup flow, error handling (an API failure skips one sentence and keeps listening), the ElevenLabs key (real Korean speech, 0.5 s).
 
+**Evaluation (Nov 1, `python backend/evaluate.py`):** jargon right in English → Tamil: plain translator 13%, Larpslator 100%; Korean → English: 93% → 100% (15 sentences each, term presence).
+
 **Not tested yet:** OpenAI (Whisper) with a real key, voice cloning with a real account, the badge (firmware not written yet), Render.
 
 ## To run
@@ -70,7 +72,7 @@ Dashboard: http://localhost:8000. Without keys or a badge: open `dashboard/index
 |---|---|
 | Everyone | OpenAI key (Whisper) in `.env`; Featherless and ElevenLabs keys are in. ElevenLabs key needs **Voices → Write** permission for voice setup, and a paid plan (Starter+) for voice cloning. |
 | A | Firmware per `docs/messages.md`. Connect to `ws://<laptop-ip>:8000/ws/badge?token=<pairing code>` (the code is on the dashboard: Session → Pair Another Device; without it the server closes the socket with 4401). Minimum: audio + `ptt` + `fb`. For the badge panel: send `hello` (stable `id` from the MAC), `state`, answer `ping`; handle `config`, `active`, `identify`, `volume`. For Render: `wss://` with `beginSSL`. |
-| C + D | Fill `data/glossaries/<context>.json`, `data/train.jsonl`, `data/larp.json`. Have someone who reads Korean/Spanish check the translations. `data/README.md` still lists the old domains. |
+| C + D | `data/` is wired in (both directions, Tamil, `academia.json` = math). Still open: a Tamil speaker reviews `TAMIL_REVIEW.md` items and a Korean speaker checks `CHECK.md`; Tamil/English-Korean entries have one option each, so add wrong-meaning alternatives for the 👎 demo; `data/README.md` still lists academia/med and mentions a `backend/translate.py` that doesn't exist (use `python backend/evaluate.py`); optional `train.jsonl`. |
 | D | Style the dashboard for the projector; plain-vs-Larpslator comparison for the demo. |
 
 More detail: [backend/README.md](../backend/README.md), [dashboard/README.md](../dashboard/README.md), [docs/messages.md](messages.md).

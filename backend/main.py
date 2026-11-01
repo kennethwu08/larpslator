@@ -118,7 +118,7 @@ MIN_SAMPLE_SPEECH_S = 20                 # voice setup: least speech accepted; ~
 MAX_SAMPLE_S = 120
 DEFAULT_TARGET = os.getenv("TARGET_LANGUAGE") or "Korean"
 
-LANGUAGES = ["Korean", "Spanish", "French", "Mandarin Chinese", "Japanese", "German", "English"]
+LANGUAGES = ["Korean", "English", "Tamil", "Spanish", "French", "Mandarin Chinese", "Japanese", "German"]
 # Lower stability = more expressive; higher style = more exaggerated delivery.
 TONE_SETTINGS = {
     "neutral":  {"stability": 0.50, "style": 0.00},
@@ -145,7 +145,8 @@ llm_client = OpenAI(api_key=os.getenv("FEATHERLESS_API_KEY"), base_url="https://
                     timeout=25, max_retries=1)
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-from ml import FIELDS, STYLES, LocalML  # noqa: E402  (slow import: loads torch)
+import ml  # noqa: E402
+from ml import FIELDS, STYLES, LocalML  # noqa: E402
 ML = LocalML()
 
 
@@ -444,7 +445,7 @@ def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
 
         t = time.perf_counter()
         with stage("local_ml"):
-            r.update(ML.analyze(source, target, context, active))
+            r.update(ML.analyze(source, target, context, active, lang))
         timing["ml"] = round((time.perf_counter() - t) * 1000)
         tx.set_tag("domain", r["domain"])
 
@@ -769,7 +770,8 @@ async def retry_with_next_option(uid: int, blamed: dict):
     if not utt:
         return
     utt["rejected"].setdefault(blamed["term"], []).append(blamed["choice"])
-    terms = ML.find_terms(utt["source"], utt["domain"], utt["target"], utt["rejected"])
+    terms = ML.find_terms(utt["source"], utt["domain"], utt["target"], utt["rejected"],
+                          spoken=ml.WHISPER_LANGS.get(utt["lang"], ""))
     terms = [t for t in terms if t["choice"]]  # a term with no options left falls back to the LLM's choice
     if [t["choice"] for t in terms] == [t["choice"] for t in utt["terms"]]:
         await broadcast({"t": "error", "id": uid, "msg": f"no other translations left for '{blamed['term']}'"})
@@ -1067,7 +1069,8 @@ async def upload_voice(request: Request, name: str = "My voice"):
 @app.get("/api/voice/test", dependencies=[Depends(require_pairing)])
 async def test_voice(text: str = ""):
     """Speak a short line in the current voice so the user can check it sounds like them."""
-    line = text or {"Korean": "안녕하세요, 이제 제 목소리로 통역합니다.", "Spanish": "Hola, ahora traduzco con mi propia voz."}.get(
+    line = text or {"Korean": "안녕하세요, 이제 제 목소리로 통역합니다.", "Spanish": "Hola, ahora traduzco con mi propia voz.",
+                    "Tamil": "வணக்கம், இப்போது என் குரலில் மொழிபெயர்க்கிறேன்."}.get(
         state.target, "Hi, this is my voice, now translating for me.")
     try:
         pcm, _ = await asyncio.to_thread(synthesize, line, "neutral")

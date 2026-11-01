@@ -141,6 +141,23 @@ Set `SENTRY_DSN` (Sentry → Project Settings → Client Keys) in `.env` and in 
 - **Dashboard:** `@sentry/browser` (in `dashboard/vendor/`) uses the same DSN via `/api/config`. It reports JavaScript errors, the WebSocket dropping, commands sent while disconnected, and rejected pairing codes.
 - **Demo:** keep the Sentry Issues page open on a second screen and filter by `step` to see what broke.
 
+## Data and evaluation
+
+The backend reads `data/` at startup (restart after changes) and never writes to it. Formats: [../docs/messages.md](../docs/messages.md#data-files-read-from-data-at-startup-restart-the-backend-after-changing-them).
+
+- **Both directions:** English speech → Korean/Tamil (`tennis.json`, `pickleball.json`, `selected/*.json`) and Korean speech → English (Kenneth's `cs.json` / `academia.json` entries like 실수 → real number, not "mistake"). `academia.json` is the math glossary.
+- **Tamil** is a target language: 45 terms from the team's glossaries; ElevenLabs speaks it.
+- The team's entries come first; the built-in ones add alternatives for 👎.
+
+`python evaluate.py` compares a **plain translator** (same LLM, no glossary) with **Larpslator** on the team's test sets (`eval-ta.jsonl`, `CHECK.md`). Nov 1, 15 sentences each:
+
+| Set | Plain | Larpslator |
+|---|---|---|
+| English → Tamil | 2/15 (13%) | **15/15 (100%)** |
+| Korean → English | 14/15 (93%) | **15/15 (100%)** |
+
+It measures whether the expected term appears, not overall quality, and the Tamil references are unreviewed drafts. `--limit 0` runs everything; `--auto` detects the field instead of using the sentence's own. Results go to `logs/eval-*.json`.
+
 ## Messages and data formats
 
 See [../docs/messages.md](../docs/messages.md) for every WebSocket message (with examples), and the glossary / training-sentence formats read from `data/`.

@@ -9,6 +9,7 @@
 - larp:    drops filler words and upgrades weak phrases before translation
 """
 import json
+from collections import Counter
 import logging
 import re
 import threading
@@ -38,11 +39,61 @@ CONTEXT_MAX_LINES = 5
 log = logging.getLogger("larpslator.ml")
 
 
-def _norm_options(value, target: str) -> list[str]:
-    """Glossary values are either a list (one target language) or {language: list}."""
-    if isinstance(value, list):
-        return value
-    return value.get(target, []) if isinstance(value, dict) else []
+# Extra data files per field. The team filed the math glossary as academia.json (실수, 정수, 극한, 행렬, ...).
+DATA_ALIASES = {"math": ["academia"]}
+LANG_CODES = {"ko": "Korean", "ta": "Tamil", "en": "English", "es": "Spanish"}
+WHISPER_LANGS = {"english": "English", "korean": "Korean", "tamil": "Tamil", "spanish": "Spanish"}
+# A Korean one-syllable term (열, 근, 원) only counts when a particle or the end follows it, so 열 doesn't match 열심히.
+KO_FOLLOW = r"(?=$|[\s.,!?]|은|는|이|가|을|를|의|에|로|으로|와|과|도|만|부터|까지|에서|이다|입니다|이에요|예요)"
+
+
+def script_language(text: str) -> str:
+    """Which language a glossary term or option is written in, from its script."""
+    if re.search(r"[\uac00-\ud7a3]", text):
+        return "Korean"
+    if re.search(r"[\u0b80-\u0bff]", text):
+        return "Tamil"
+    return "English"
+
+
+def normalize_glossary(raw: dict) -> dict:
+    """Any glossary file -> {term: {target language: [options]}}.
+
+    Values are {language: [options]} or a plain list; a plain list is labeled by the script of its options
+    (Kenneth's Korean->English files are 실수: ["real number", "mistake"]). An English term with a plain
+    Latin-script list is ambiguous (English? Spanish?) and skipped."""
+    out = {}
+    for term, value in raw.items():
+        if not isinstance(term, str) or not term.strip():
+            continue
+        if isinstance(value, dict):
+            entry = {lang: [o for o in opts if isinstance(o, str) and o.strip()]
+                     for lang, opts in value.items() if isinstance(opts, list)}
+        elif isinstance(value, list):
+            opts = [o for o in value if isinstance(o, str) and o.strip()]
+            lang = script_language(opts[0]) if opts else ""
+            if not opts or lang == script_language(term):
+                continue
+            entry = {lang: opts}
+        elif isinstance(value, str):     # selected/*.json: term -> one preferred translation
+            entry = {script_language(value): [value]}
+        else:
+            continue
+        entry = {lang: opts for lang, opts in entry.items() if opts}
+        if entry:
+            out[term.strip()] = entry
+    return out
+
+
+def merge_glossaries(*glossaries: dict) -> dict:
+    """Earlier glossaries win the option order; later ones add terms and extra options."""
+    out: dict = {}
+    for g in glossaries:
+        for term, entry in g.items():
+            have = out.setdefault(term, {})
+            for lang, opts in entry.items():
+                have[lang] = list(dict.fromkeys(have.get(lang, []) + opts))
+    return out
 
 
 def _read_json(path: Path):
@@ -65,9 +116,10 @@ class LocalML:
         self.model = TextEmbedding(EMBED_MODEL, cache_dir=str(MODEL_DIR))
 
         # Field classifier over all fields; unchecked ones are masked out at prediction time.
-        # Glossary terms count as short training examples too.
+        # English glossary terms count as short training examples too (the embedding model is English-only;
+        # Korean and Tamil speech is placed by glossary hits instead, see analyze()).
         texts = [(t, d) for d in DOMAINS for t in sentences[d]]
-        texts += [(term, d) for d in DOMAINS for term in self.glossary[d]]
+        texts += [(term, d) for d in DOMAINS for term in self.glossary[d] if script_language(term) == "English"]
         self.clf = LogisticRegression(max_iter=2000, C=4.0)
         self.clf.fit(self.embed([t for t, _ in texts]), [d for _, d in texts])
         self.classes = [str(c) for c in self.clf.classes_]
@@ -82,8 +134,9 @@ class LocalML:
         self.stats = {"terms": {}, "history": []}
         if STATE_FILE.exists():
             self.stats = _read_json(STATE_FILE) or self.stats
-        log.info("ML ready: %d training examples, %d glossary terms, sources %s",
-                 len(texts), sum(len(g) for g in self.glossary.values()), self.source)
+        counts = {d: dict(sorted(Counter(script_language(t) for t in g).items())) for d, g in self.glossary.items() if g}
+        log.info("ML ready: %d training examples; glossary terms by spoken language %s; sources %s",
+                 len(texts), counts, self.source)
 
     def _load(self, seeds: dict) -> tuple[dict, dict]:
         """data/ wins per context; the built-in seeds fill in whatever data/ doesn't have yet."""
@@ -99,11 +152,14 @@ class LocalML:
 
         glossary, sentences = {}, {}
         for d in DOMAINS:
-            from_data = _read_json(DATA / "glossaries" / f"{d}.json") if (DATA / "glossaries" / f"{d}.json").exists() else None
-            glossary[d] = from_data if isinstance(from_data, dict) else dict(seeds["glossary"].get(d, {}))
+            files = [DATA / "glossaries" / f"{name}.json" for name in [d, *DATA_ALIASES.get(d, [])]]
+            files += sorted((DATA / "glossaries" / "selected").glob(f"{d}-*.json"))
+            from_data = [normalize_glossary(g) for g in map(_read_json, filter(Path.exists, files)) if isinstance(g, dict)]
+            # The team's data first; the built-in entries add terms and the "wrong meaning" options 👎 can switch to.
+            glossary[d] = merge_glossaries(*from_data, normalize_glossary(seeds["glossary"].get(d, {})))
             sentences[d] = [t for t, dd in rows if dd == d] or seeds["domains"].get(d, [])
             if d in FIELDS:
-                self.source[d] = "data" if from_data is not None or any(dd == d for _, dd in rows) else "built-in"
+                self.source[d] = "data" if any(from_data) or any(dd == d for _, dd in rows) else "built-in"
         return glossary, sentences
 
     def _load_larp(self, seeds: dict) -> dict:
@@ -143,14 +199,23 @@ class LocalML:
         return max(probs, key=probs.get)
 
     def whisper_prompt(self, active: set[str]) -> str:
-        """Jargon of the checked fields, so Whisper spells it right (free: same API call)."""
-        terms = [t for d in FIELDS if d in active for t in self.glossary[d]]
+        """English jargon of the checked fields, so Whisper spells it right (free: same API call). Only English:
+        Korean words in the prompt could tip Whisper into detecting Korean for English speech."""
+        terms = [t for d in FIELDS if d in active for t in self.glossary[d] if script_language(t) == "English"]
         return ", ".join(dict.fromkeys(terms))[:600]
 
-    def analyze(self, text: str, target: str, context: str, active: set[str]) -> dict:
+    def analyze(self, text: str, target: str, context: str, active: set[str], source_lang: str = "") -> dict:
+        """`source_lang` is Whisper's detected language ("english", "korean", ...); guessed from the script if empty."""
+        spoken = WHISPER_LANGS.get(source_lang.lower(), "") or script_language(text)
         emb = self.embed([text])[0]
 
         probs = self.clf.predict_proba([emb])[0]
+        # Glossary hits per field: the main signal for Korean/Tamil speech, a boost for English.
+        hits = np.array([len(self._matches(text, c, spoken)) if c in FIELDS else 0 for c in self.classes], dtype=float)
+        if hits.sum():
+            hit_probs = (hits + 0.05) / (hits + 0.05).sum()
+            w = 0.5 if spoken == "English" else 0.9
+            probs = w * hit_probs + (1 - w) * probs
         self.domain_ema = probs if self.domain_ema is None else SMOOTHING * self.domain_ema + (1 - SMOOTHING) * probs
         domain = self.current_domain(active)
 
@@ -162,9 +227,9 @@ class LocalML:
             "domain": domain,
             "domain_probs": self._masked(self.domain_ema, active),
             "tone": tone,
-            "terms": self.find_terms(text, domain, target),
+            "terms": self.find_terms(text, domain, target, spoken=spoken),
             "context_lines": self._relevant_context(context, text, emb),
-            "larp": self.enhance(text) if larp_on else None,
+            "larp": self.enhance(text) if larp_on and spoken == "English" else None,  # phrase rules are English
         }
 
     def enhance(self, text: str) -> dict:
@@ -197,17 +262,33 @@ class LocalML:
         best = int(np.argmax(sims))
         return self.tone_names[best] if sims[best] >= TONE_MIN_SIM else "neutral"
 
-    def find_terms(self, text: str, domain: str, target: str, exclude: dict | None = None) -> list[dict]:
+    @staticmethod
+    def _term_pattern(term: str) -> str:
+        lang = script_language(term)
+        if lang == "Korean":   # particles attach to the word: 배열의, 캐시에, 집합을
+            return rf"(?<![\uac00-\ud7a3]){re.escape(term)}" + (KO_FOLLOW if len(term) == 1 else "")
+        if lang == "Tamil":    # suffixes attach too
+            return rf"(?<![\u0b80-\u0bff]){re.escape(term)}"
+        return rf"\b{re.escape(term)}(s|es|ed|ing)?\b"
+
+    def _matches(self, text: str, domain: str, spoken: str) -> list[str]:
+        return [t for t in self.glossary.get(domain, {}) if script_language(t) == spoken
+                and re.search(self._term_pattern(t), text, re.IGNORECASE)]
+
+    def find_terms(self, text: str, domain: str, target: str, exclude: dict | None = None,
+                   spoken: str = "") -> list[dict]:
         """Glossary terms in the sentence (detected domain + general), in sentence order.
 
-        Longer terms are matched first so "pull request" wins over "request"."""
+        Only terms in the spoken language count (English terms in English speech, 실수 in Korean speech), with
+        options in the target language. Longer terms are matched first so "pull request" wins over "request"."""
+        spoken = spoken or script_language(text)
         found, taken = [], []
         candidates = {**self.glossary["general"], **self.glossary[domain]}
         for term in sorted(candidates, key=len, reverse=True):
-            options = _norm_options(candidates[term], target)
-            if not options:
+            options = candidates[term].get(target, [])
+            if not options or script_language(term) != spoken:
                 continue
-            m = re.search(rf"\b{re.escape(term)}(s|es|ed|ing)?\b", text, re.IGNORECASE)
+            m = re.search(self._term_pattern(term), text, re.IGNORECASE)
             if not m or any(a < m.end() and m.start() < b for a, b in taken):
                 continue
             taken.append(m.span())
