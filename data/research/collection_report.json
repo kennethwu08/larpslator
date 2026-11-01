@@ -1,0 +1,71 @@
+[
+  {
+    "source_id": "python-ko",
+    "url": "https://docs.python.org/ko/3.12/glossary.html",
+    "checked_at_utc": "2026-11-01T16:24:50.301344+00:00",
+    "robots": "checked",
+    "final_url": "https://docs.python.org/ko/3.12/glossary.html",
+    "bytes": 181889,
+    "sha256": "0c3e1b0f989012dfaba67d508f65e3602bc5ed7a801e72022ce34045e2f796a3",
+    "hangul_characters": 13137,
+    "status": "extracted_in_memory"
+  },
+  {
+    "source_id": "mdn-ko",
+    "url": "https://developer.mozilla.org/ko/docs/Glossary",
+    "checked_at_utc": "2026-11-01T16:24:51.099520+00:00",
+    "robots": "checked",
+    "final_url": "https://developer.mozilla.org/ko/docs/Glossary",
+    "bytes": 208368,
+    "sha256": "bf8025668df045cddb2619c1ace800dfb804af5ee5196feb76156e5cc6fef033",
+    "hangul_characters": 1853,
+    "status": "extracted_in_memory"
+  },
+  {
+    "source_id": "pickle-glossary",
+    "url": "https://totalpickleball.kr/guide/glossary/",
+    "checked_at_utc": "2026-11-01T16:24:52.036331+00:00",
+    "robots": "checked",
+    "final_url": "https://totalpickleball.kr/guide/glossary/",
+    "bytes": 29839,
+    "sha256": "69a92c083bd8c72c4757d90a53d1c46adb228993c5e2da6c6329c5c0ec38b7ac",
+    "hangul_characters": 3458,
+    "status": "extracted_in_memory"
+  },
+  {
+    "source_id": "pgc-pickle",
+    "url": "https://pgc.kr/pickleball",
+    "checked_at_utc": "2026-11-01T16:24:56.223063+00:00",
+    "robots": "checked",
+    "final_url": "https://pgc.kr/pickleball",
+    "bytes": 1235753,
+    "sha256": "041a9d8fd7640a36fe14075307236481cf40d95e3fd835cd6afc454c52293044",
+    "hangul_characters": 2217,
+    "status": "extracted_in_memory"
+  },
+  {
+    "source_id": "tennis-kocw",
+    "url": "https://kocw-n.xcache.kinxcdn.com/data/document/2024/chuncheon/leekichung0206/1.pdf",
+    "checked_at_utc": "2026-11-01T16:25:01.269228+00:00",
+    "robots": "unavailable; skipped",
+    "status": "skipped_robots"
+  },
+  {
+    "source_id": "tennis-kta",
+    "url": "https://www.kortennis.or.kr/upload/TAH/docs/ITF_Rules_of_Tennis_2020.pdf",
+    "checked_at_utc": "2026-11-01T16:25:02.438249+00:00",
+    "robots": "unavailable; skipped",
+    "status": "skipped_robots"
+  },
+  {
+    "source_id": "tennis-on",
+    "url": "https://www.on.com/ko-kr/stories/how-does-tennis-scoring-work",
+    "checked_at_utc": "2026-11-01T16:25:04.099585+00:00",
+    "robots": "checked",
+    "final_url": "https://www.on.com/ko-kr/stories/how-does-tennis-scoring-work",
+    "bytes": 583310,
+    "sha256": "9530ca0fa5e76372fcc9c0c94955ef510ba02e93465048c4609474f1dce82178",
+    "hangul_characters": 4276,
+    "status": "extracted_in_memory"
+  }
+]

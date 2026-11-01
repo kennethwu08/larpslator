@@ -1,0 +1,116 @@
+[
+  {
+    "id": "cs-ta-it-terms-2023",
+    "checked_at_utc": "2026-11-01T16:40:35.497613+00:00",
+    "source_language": "ta",
+    "status": "bibliographic_record_only",
+    "evidence": "publisher issue contents verified; individual article retrieval failed",
+    "reason": "Publisher metadata reviewed through web research; direct fetch failed or timed out. No full Tamil paper saved.",
+    "url": "https://ejournal.um.edu.my/index.php/tamilperaivu/article/view/50544"
+  },
+  {
+    "id": "cs-ta-internet-2015",
+    "checked_at_utc": "2026-11-01T16:40:35.497613+00:00",
+    "source_language": "ta",
+    "status": "bibliographic_record_only",
+    "evidence": "publisher article page and bilingual abstract verified",
+    "reason": "Publisher metadata reviewed through web research; direct fetch failed or timed out. No full Tamil paper saved.",
+    "url": "https://ejournal.um.edu.my/index.php/tamilperaivu/article/view/12689"
+  },
+  {
+    "id": "tennis-en-biomechanics-2023",
+    "checked_at_utc": "2026-11-01T16:40:35.497613+00:00",
+    "source_language": "en",
+    "bibliographic_metadata": {
+      "id": "37590226",
+      "source": "MED",
+      "pmcid": "PMC10434869",
+      "doi": "10.1371/journal.pone.0290320",
+      "title": "Biomechanical analyses of different serve and groundstroke techniques in tennis: A systematic scoping review.",
+      "authorString": "Lambrich J, Muehlbauer T.",
+      "pubYear": "2023",
+      "isOpenAccess": "Y"
+    },
+    "fulltext_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC10434869/fullTextXML",
+    "license_notice": "https://creativecommons.org/licenses/by/4.0/This is an open access article distributed under the terms of the Creative Commons Attribution License, which permits unrestricted use, distribution, and reproduction in any medium, provided the original author and source are credited.",
+    "license_links": "textmining ccbylicense uri https://creativecommons.org/licenses/by/4.0/",
+    "license_verified_cc_by": true,
+    "status": "licensed_english_fulltext_saved",
+    "sha256_xml": "30ca51bcbd90ab648ea1315c64d0779404048ce1962dcc278a2e340697046586",
+    "body_characters": 50550,
+    "local_xml": "licensed_fulltext/tennis-en-biomechanics-2023.xml",
+    "local_text": "licensed_fulltext/tennis-en-biomechanics-2023.txt"
+  },
+  {
+    "id": "tennis-en-kinematics-2024",
+    "checked_at_utc": "2026-11-01T16:40:37.335878+00:00",
+    "source_language": "en",
+    "bibliographic_metadata": {
+      "id": "39040663",
+      "source": "MED",
+      "pmcid": "PMC11260724",
+      "doi": "10.3389/fspor.2024.1432030",
+      "title": "Kinematics characteristics of key point of interest during tennis serve among tennis players: a systematic review and meta-analysis.",
+      "authorString": "Jacquier-Bret J, Gorce P.",
+      "pubYear": "2024",
+      "isOpenAccess": "Y"
+    },
+    "fulltext_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11260724/fullTextXML",
+    "license_notice": "https://creativecommons.org/licenses/by/4.0/This is an open-access article distributed under the terms of the Creative Commons Attribution License (CC BY). The use, distribution or reproduction in other forums is permitted, provided the original author(s) and the copyright owner(s) are credited and that the original publication in this journal is cited, in accordance with accepted academic practice. No use, distribution or reproduction is permitted which does not comply with these terms.",
+    "license_links": "textmining ccbylicense uri https://creativecommons.org/licenses/by/4.0/",
+    "license_verified_cc_by": true,
+    "status": "licensed_english_fulltext_saved",
+    "sha256_xml": "eeb8868c05ee83cdcf11e5e58ec40d90efbeb9f400358b6891e116e7f6e3524d",
+    "body_characters": 43039,
+    "local_xml": "licensed_fulltext/tennis-en-kinematics-2024.xml",
+    "local_text": "licensed_fulltext/tennis-en-kinematics-2024.txt"
+  },
+  {
+    "id": "pickleball-en-wellbeing-2025",
+    "checked_at_utc": "2026-11-01T16:40:40.671223+00:00",
+    "source_language": "en",
+    "bibliographic_metadata": {
+      "id": "40799328",
+      "source": "MED",
+      "pmcid": "PMC12341226",
+      "doi": "10.3389/fpsyg.2025.1614448",
+      "title": "Padel, pickleball and wellbeing: a systematic review.",
+      "authorString": "Lauxtermann L, Stubbs B.",
+      "pubYear": "2025",
+      "isOpenAccess": "Y"
+    },
+    "fulltext_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC12341226/fullTextXML",
+    "license_notice": "https://creativecommons.org/licenses/by/4.0/This is an open-access article distributed under the terms of the Creative Commons Attribution License (CC BY). The use, distribution or reproduction in other forums is permitted, provided the original author(s) and the copyright owner(s) are credited and that the original publication in this journal is cited, in accordance with accepted academic practice. No use, distribution or reproduction is permitted which does not comply with these terms.",
+    "license_links": "textmining ccbylicense",
+    "license_verified_cc_by": true,
+    "status": "licensed_english_fulltext_saved",
+    "sha256_xml": "76d2615b07ad0d94e08c782ec2e1404292dc394f724ffedcf2a854de9d8c16c1",
+    "body_characters": 34407,
+    "local_xml": "licensed_fulltext/pickleball-en-wellbeing-2025.xml",
+    "local_text": "licensed_fulltext/pickleball-en-wellbeing-2025.txt"
+  },
+  {
+    "id": "pickleball-en-mental-health-2023",
+    "checked_at_utc": "2026-11-01T16:40:42.443601+00:00",
+    "source_language": "en",
+    "bibliographic_metadata": {
+      "id": "36895753",
+      "source": "MED",
+      "pmcid": "PMC9988900",
+      "doi": "10.3389/fpsyg.2023.1137047",
+      "title": "Pickleball and mental health in adults: A systematic review.",
+      "authorString": "Cerezuela JL, Lirola MJ, Cangas AJ.",
+      "pubYear": "2023",
+      "isOpenAccess": "Y"
+    },
+    "fulltext_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC9988900/fullTextXML",
+    "license_notice": "https://creativecommons.org/licenses/by/4.0/This is an open-access article distributed under the terms of the Creative Commons Attribution License (CC BY). The use, distribution or reproduction in other forums is permitted, provided the original author(s) and the copyright owner(s) are credited and that the original publication in this journal is cited, in accordance with accepted academic practice. No use, distribution or reproduction is permitted which does not comply with these terms.",
+    "license_links": "textmining ccbylicense",
+    "license_verified_cc_by": true,
+    "status": "licensed_english_fulltext_saved",
+    "sha256_xml": "194b55dc98cb09caf5404dd2486999e604eb6f4e1de96fbeb9a5447eef1da07b",
+    "body_characters": 32336,
+    "local_xml": "licensed_fulltext/pickleball-en-mental-health-2023.xml",
+    "local_text": "licensed_fulltext/pickleball-en-mental-health-2023.txt"
+  }
+]

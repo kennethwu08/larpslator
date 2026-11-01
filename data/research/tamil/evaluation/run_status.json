@@ -1,0 +1,6 @@
+{
+  "status": "not_run_missing_api_key",
+  "api_calls_made": 0,
+  "action": "Set GEMINI_API_KEY in repository-root .env, then rerun with --allow-draft or approved glossary.",
+  "planned_api_calls": 12
+}
