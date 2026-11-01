@@ -1,0 +1,31 @@
+# Render Blueprint: New > Blueprint in the Render dashboard, pick this repo, then paste the keys it asks for.
+services:
+  - type: web
+    name: larpslator-backend
+    runtime: python
+    plan: free            # sleeps after 15 min idle; open /health a few minutes before the demo to wake it
+    region: ohio          # closest Render region to Toronto
+    rootDir: backend
+    # Download the embedding model at build time so the first sentence doesn't wait for it.
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/all-MiniLM-L6-v2', cache_dir='.models')"
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: render
+      - key: TARGET_LANGUAGE
+        value: Korean

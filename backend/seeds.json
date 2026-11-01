@@ -1,0 +1,160 @@
+{
+  "_note": "Built-in fallback used only for contexts with no file in data/ yet. data/glossaries/<context>.json, data/train.jsonl and data/larp.json replace the matching part. First option = default translation.",
+
+  "domains": {
+    "pickleball": [
+      "Stay out of the kitchen unless the ball bounces first.",
+      "Hit a soft dink cross-court and wait for a pop-up.",
+      "The third shot drop is the hardest shot in pickleball.",
+      "My new paddle has a lot more spin than my old one.",
+      "That was a fault, your foot was in the non-volley zone.",
+      "Let's play doubles and switch partners after each game.",
+      "You have to let the return bounce before you volley.",
+      "She pulled off an Erne right at the net.",
+      "The serve has to be underhand and below the waist.",
+      "Call the score before you serve: four, two, one.",
+      "We're stacking so I stay on the forehand side.",
+      "His DUPR rating went up after the tournament."
+    ],
+    "tennis": [
+      "It's deuce again, she needs two more points.",
+      "He served an ace down the T on break point.",
+      "She won the first set six-four.",
+      "Love-fifteen, and he double-faulted again.",
+      "The match went to a tiebreak in the third set.",
+      "Hit more topspin so the ball dips inside the baseline.",
+      "Advantage server, one point for the game.",
+      "He played a perfect drop shot from behind the baseline.",
+      "My racket strings snapped during the rally.",
+      "Clay courts are slower than hard courts.",
+      "She hit a backhand down the line to break serve.",
+      "The umpire called the ball out, but Hawk-Eye said it was in."
+    ],
+    "cs": [
+      "The kernel scheduler preempts the thread when its time slice ends.",
+      "Can you merge my branch after the CI pipeline passes?",
+      "We have a race condition because the mutex isn't held.",
+      "The cache miss rate went up after we deployed the new build.",
+      "Let's push the fix and open a pull request.",
+      "The compiler optimizes the loop into vector instructions.",
+      "Run the script in a shell and check the stack trace.",
+      "This bug only shows up when the heap is fragmented.",
+      "The API returns a 500 error under heavy load.",
+      "We should refactor the class before adding more features.",
+      "The garbage collector pauses the program for a few milliseconds.",
+      "Store the hash in the database and index that column."
+    ],
+    "math": [
+      "Every finite integral domain is a field.",
+      "The set of even numbers is closed under addition.",
+      "Take the limit as x goes to infinity.",
+      "The proof follows by induction on n.",
+      "Find the roots of the polynomial.",
+      "The derivative of the function is zero at the maximum.",
+      "This matrix is invertible because its determinant isn't zero.",
+      "The integers form a ring but not a field.",
+      "Every group of prime order is cyclic.",
+      "The mean of the distribution is the expected value.",
+      "Show that the sum of two odd numbers is even.",
+      "The eigenvalues of a symmetric matrix are real."
+    ],
+    "general": [
+      "Where should we go for lunch today?",
+      "I'll call you when I get home.",
+      "The weather is really nice this weekend.",
+      "Can you pass me the water bottle?",
+      "Thanks for coming, it was great to see you.",
+      "The train was late again this morning.",
+      "Let's meet at the coffee shop at three.",
+      "I didn't sleep much last night.",
+      "Do you want to watch a movie tonight?",
+      "My phone battery is almost dead.",
+      "How was your trip to Montreal?",
+      "We need to buy groceries before the store closes."
+    ]
+  },
+
+  "tones": {
+    "excited": ["This is amazing, I can't believe it worked!", "We won, that's fantastic news!", "Wow, look at that, it's incredible!", "I'm so happy you made it!"],
+    "calm": ["Take your time, there's no rush.", "Let's slow down and go through it step by step.", "It's okay, everything is fine.", "Just relax and breathe."],
+    "serious": ["This is a critical problem and we have to fix it now.", "I need you to listen carefully, this is important.", "The results are concerning and need attention.", "We cannot ship this until the safety issue is resolved."],
+    "neutral": ["The meeting is at two o'clock.", "Here is the report from last week.", "The file is in the shared folder.", "We have three items on the agenda."]
+  },
+
+  "glossary": {
+    "pickleball": {
+      "kitchen":   {"Korean": ["키친(논발리 존)", "부엌"], "Spanish": ["zona de no volea", "cocina"]},
+      "dink":      {"Korean": ["딩크", "살짝 치기"], "Spanish": ["dink", "toque suave"]},
+      "serve":     {"Korean": ["서브", "봉사하다"], "Spanish": ["saque", "servir"]},
+      "volley":    {"Korean": ["발리", "일제 사격"], "Spanish": ["volea", "descarga"]},
+      "paddle":    {"Korean": ["패들", "노"], "Spanish": ["pala", "remo"]},
+      "fault":     {"Korean": ["폴트", "잘못"], "Spanish": ["falta", "culpa"]},
+      "rally":     {"Korean": ["랠리", "집회"], "Spanish": ["peloteo", "mitin"]},
+      "third shot drop": {"Korean": ["서드 샷 드롭", "세 번째 샷 떨어뜨리기"], "Spanish": ["tercer golpe de dejada", "tercer tiro caído"]}
+    },
+    "tennis": {
+      "love":      {"Korean": ["러브(0점)", "사랑"], "Spanish": ["cero", "amor"]},
+      "deuce":     {"Korean": ["듀스"], "Spanish": ["iguales", "deuce"]},
+      "ace":       {"Korean": ["에이스"], "Spanish": ["ace", "as"]},
+      "set":       {"Korean": ["세트", "집합"], "Spanish": ["set", "conjunto"]},
+      "break point": {"Korean": ["브레이크 포인트", "휴식 시점"], "Spanish": ["punto de quiebre", "punto de descanso"]},
+      "court":     {"Korean": ["코트", "법원"], "Spanish": ["pista", "tribunal"]},
+      "match":     {"Korean": ["경기", "성냥"], "Spanish": ["partido", "fósforo"]},
+      "advantage": {"Korean": ["어드밴티지", "이점"], "Spanish": ["ventaja"]},
+      "serve":     {"Korean": ["서브", "봉사하다"], "Spanish": ["saque", "servir"]}
+    },
+    "cs": {
+      "kernel":    {"Korean": ["커널", "알맹이"], "Spanish": ["núcleo", "grano"]},
+      "thread":    {"Korean": ["스레드", "실"], "Spanish": ["hilo", "rosca"]},
+      "bug":       {"Korean": ["버그", "벌레"], "Spanish": ["error", "insecto"]},
+      "cache":     {"Korean": ["캐시", "은닉처"], "Spanish": ["caché", "escondite"]},
+      "deploy":    {"Korean": ["배포하다", "배치하다"], "Spanish": ["desplegar", "implementar"]},
+      "merge":     {"Korean": ["병합하다", "합병하다"], "Spanish": ["fusionar", "combinar"]},
+      "branch":    {"Korean": ["브랜치", "나뭇가지"], "Spanish": ["rama", "sucursal"]},
+      "shell":     {"Korean": ["셸", "조개껍데기"], "Spanish": ["shell", "concha"]},
+      "stack":     {"Korean": ["스택", "더미"], "Spanish": ["pila", "montón"]},
+      "pull request": {"Korean": ["풀 리퀘스트", "끌어오기 요청"], "Spanish": ["pull request", "solicitud de extracción"]}
+    },
+    "math": {
+      "set":       {"Korean": ["집합", "세트"], "Spanish": ["conjunto", "set"]},
+      "field":     {"Korean": ["체", "들판"], "Spanish": ["cuerpo", "campo"]},
+      "ring":      {"Korean": ["환", "반지"], "Spanish": ["anillo"]},
+      "group":     {"Korean": ["군", "그룹"], "Spanish": ["grupo"]},
+      "function":  {"Korean": ["함수", "기능"], "Spanish": ["función"]},
+      "limit":     {"Korean": ["극한", "한계"], "Spanish": ["límite"]},
+      "proof":     {"Korean": ["증명", "증거"], "Spanish": ["demostración", "prueba"]},
+      "root":      {"Korean": ["근", "뿌리"], "Spanish": ["raíz"]},
+      "prime":     {"Korean": ["소수", "최고의"], "Spanish": ["primo", "excelente"]},
+      "derivative": {"Korean": ["도함수", "파생상품"], "Spanish": ["derivada", "derivado"]},
+      "mean":      {"Korean": ["평균", "의미하다"], "Spanish": ["media", "significar"]},
+      "odd":       {"Korean": ["홀수", "이상한"], "Spanish": ["impar", "raro"]}
+    },
+    "general": {}
+  },
+
+  "larp": {
+    "style": "Make the speaker sound like a confident, seasoned {field} expert: polished and impressive, same meaning, about the same length.",
+    "fillers": ["um", "uh", "erm", "like,", "you know,", "I mean,", "basically,", "sort of", "kind of"],
+    "upgrades": {
+      "I think": "I'm confident that",
+      "I guess": "my read is that",
+      "I feel like": "the evidence suggests",
+      "maybe": "most likely",
+      "pretty good": "excellent",
+      "really good": "outstanding",
+      "good": "strong",
+      "bad": "suboptimal",
+      "a lot of": "a significant amount of",
+      "a lot": "immensely",
+      "stuff": "material",
+      "thing": "element",
+      "try to": "aim to",
+      "figure out": "determine",
+      "look at": "examine",
+      "get better": "improve",
+      "big": "substantial",
+      "easy": "straightforward",
+      "hard": "challenging"
+    }
+  }
+}
