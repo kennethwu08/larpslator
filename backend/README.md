@@ -48,6 +48,20 @@ python test_pipeline.py sample.wav --contexts math,larp      # only math checked
 
 It prints every stage's output and timing (field, tone, terms found, which context lines went to Gemini) and saves each translation as `out_<n>.wav`.
 
+## Voice setup (do this first)
+
+Translations are spoken in **the user's own voice**, cloned with ElevenLabs Instant Voice Cloning. Until setup is done, a stock voice is used and the dashboard shows a warning.
+
+1. Open the dashboard, enter your name under **Your voice**, and press **Record on badge** or **Record in browser**.
+2. Read the script shown, at your normal pace, somewhere quiet: about 60 s (minimum 20 s of speech).
+3. Press **Stop & create voice**, then **▶ Play test** to check it sounds like you.
+
+- The clone is multilingual (`eleven_flash_v2_5`), so it speaks Korean or Spanish in your voice. `similarity_boost` is 0.9 to stay close to you.
+- It's saved in `state/voice.json` and reused on restart. Redoing setup replaces the old clone (and deletes it from ElevenLabs to free the slot).
+- The voice id is shown on the dashboard. Put it in `.env` as `ELEVENLABS_VOICE_ID` to keep it where the disk gets wiped (Render), or to share one voice across laptops.
+- **Instant voice cloning needs a paid ElevenLabs plan (Starter or above).** On the free plan, setup fails with an error from ElevenLabs.
+- "Record in browser" needs `localhost` or https (browsers block the mic on plain `http://<lan-ip>`). Otherwise use the badge.
+
 ## Contexts (the dashboard checkboxes)
 
 Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fields) and **LARP mode** (a style).
@@ -109,7 +123,7 @@ See [../docs/messages.md](../docs/messages.md) for every WebSocket message (with
 
 | Variable | Default |
 |---|---|
-| `ELEVENLABS_VOICE_ID` | a premade voice; set this to your cloned voice |
+| `ELEVENLABS_VOICE_ID` | empty; voice setup on the dashboard sets the voice. Set this to reuse a clone (e.g. on Render) |
 | `ELEVENLABS_MODEL` | `eleven_flash_v2_5` |
 | `GEMINI_MODEL` | `gemini-2.5-flash-lite` (use `gemini-2.5-flash` if translations are weak) |
 | `SENTRY_DSN` | empty = Sentry off |

@@ -50,6 +50,10 @@
   .ctx.style { border-top:1px solid var(--line); margin-top:4px; padding-top:10px; }
   .larp { color:var(--dim); text-decoration:line-through; font-size:15px; }
   .larp-on { font-size:12px; font-weight:600; color:#f5b041; }
+  .script { font-size:15px; line-height:1.5; background:var(--bg); border-radius:8px; padding:10px; margin:8px 0; }
+  .warn { color:#f5b041; }
+  .pill.bad { color:var(--bad); }
+  summary { cursor:pointer; color:var(--accent); }
   #log { max-height: calc(100vh - 100px); overflow-y:auto; }
 </style>
 </head>
@@ -58,11 +62,34 @@
   <h1>Larpslator</h1>
   <button id="listen" class="off">Listen</button>
   <label>Translate to <select id="lang"></select></label>
+  <span id="voicepill" class="pill">voice: …</span>
   <span id="badge" class="pill">badge: offline</span>
   <span id="conn" class="pill">server: connecting…</span>
 </header>
 <main>
   <aside>
+    <section id="voicebox">
+      <h2>Your voice</h2>
+      <div id="voicestate" class="meta"></div>
+      <details id="voicesetup">
+        <summary id="voicesummary">Set up your voice</summary>
+        <div class="meta" style="margin-top:8px">Read this out loud at your normal pace (about 60 s, at least 20 s of speech), somewhere quiet:</div>
+        <p class="script">Hi, I'm setting up my voice for Larpslator. I'll read this out loud at a normal pace, the way I usually talk.
+          On weekends I play pickleball and tennis with friends; we argue about the kitchen line, the score, and whose serve was out.
+          During the week I study computer science and math: algorithms, proofs, matrices, and the occasional bug that takes all night to find.
+          Honestly, the best part of any day is a good conversation, a quick laugh, and maybe a coffee afterwards.
+          Thanks for listening. This should be enough for the voice to sound like me.</p>
+        <div class="row"><input id="voicename" placeholder="Your name"></div>
+        <div class="row">
+          <button id="recbadge">Record on badge</button>
+          <button id="recbrowser">Record in browser</button>
+        </div>
+        <div class="row"><button id="recstop" disabled>Stop &amp; create voice</button><button id="reccancel" disabled>Cancel</button></div>
+        <div id="recprogress" class="meta"></div>
+      </details>
+      <div class="row"><button id="voicetest">▶ Play test</button></div>
+      <audio id="voiceaudio"></audio>
+    </section>
     <section>
       <h2>Contexts</h2>
       <div id="contexts"></div>
@@ -117,7 +144,8 @@ function connect() {
     else if (m.t === "utterance") fillRow(m);
     else if (m.t === "feedback") markFeedback(m.id, m.val);
     else if (m.t === "metrics") showMetrics(m);
-    else if (m.t === "error") addError(m);
+    else if (m.t === "error") { addError(m); if (m.msg.startsWith("voice setup")) recDone(m.msg); }
+    else if (m.t === "voice_progress") voiceProgress(m);
   };
 }
 
@@ -140,6 +168,7 @@ function applyStatus(m) {
   $("contexts").querySelectorAll("input").forEach(cb =>
     cb.onchange = () => send({ t: "toggle", id: cb.dataset.id, on: cb.checked }));
 
+  showVoice(m.voice, m.voice_recording);
   packs = m.packs;
   $("packs").innerHTML = `<option value="">Load a saved pack…</option>` +
     packs.map((p, i) => `<option value="${i}">${esc(p.name)} (${esc(p.saved_at)})</option>`).join("");
@@ -226,6 +255,96 @@ $("packs").onchange = e => {
   $("ctx").value = p.text;
   send({ t: "context", name: p.name, text: p.text });  // make it the active pack
 };
+
+// ---------------------------------------------------------------- voice setup
+let browserRec = null, uploading = false;
+
+function showVoice(v, recording) {
+  $("voicepill").textContent = v.ready ? `voice: ${v.name}` : "voice: stock (set up!)";
+  $("voicepill").className = "pill " + (v.ready ? "on" : "bad");
+  $("voicestate").innerHTML = v.ready
+    ? `Translations are spoken in <b>${esc(v.name)}</b>'s cloned voice.<br><span title="put this in .env as ELEVENLABS_VOICE_ID to keep it on Render">voice id: ${esc(v.voice_id)}</span>`
+    : `<span class="warn">⚠ Translations use a stock voice. Set up your voice first so the badge sounds like you.</span>`;
+  $("voicesummary").textContent = v.ready ? "Redo voice setup" : "Set up your voice";
+  if (!v.ready && !$("voicesetup").dataset.touched) $("voicesetup").open = true;
+  // The server says whether a badge recording is running; a browser recording is tracked here.
+  if (recording !== null) setRecButtons(true);
+  else if (!browserRec && !uploading) {
+    setRecButtons(false);
+    if (v.ready && $("recprogress").textContent.startsWith("Creating")) $("recprogress").textContent = "Done. Press ▶ Play test to hear it.";
+  }
+}
+
+function setRecButtons(recording) {
+  $("recbadge").disabled = $("recbrowser").disabled = recording;
+  $("recstop").disabled = $("reccancel").disabled = !recording;
+}
+function recStarted() { setRecButtons(true); $("recprogress").textContent = "Recording… start reading."; }
+function recDone(msg) { setRecButtons(false); $("recprogress").textContent = msg; }
+function voiceProgress(m) {
+  if (m.state === "creating") { $("recprogress").textContent = "Creating your voice with ElevenLabs…"; return; }
+  $("recprogress").textContent = `${m.speech_s} s of speech recorded (${m.total_s} s total). ` +
+    (m.speech_s < 20 ? "Keep reading…" : m.speech_s < 60 ? "Good. A bit more sounds better." : "Great, press Stop.");
+}
+
+$("voicesetup").addEventListener("toggle", () => $("voicesetup").dataset.touched = "1");
+$("recbadge").onclick = () => { send({ t: "voice", action: "record", name: $("voicename").value }); recStarted(); };
+$("recbrowser").onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    proc.onaudioprocess = e => {
+      chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      const secs = chunks.length * 4096 / ctx.sampleRate;
+      $("recprogress").textContent = `${secs.toFixed(0)} s recorded. ` + (secs < 25 ? "Keep reading…" : secs < 60 ? "Good. A bit more sounds better." : "Great, press Stop.");
+    };
+    src.connect(proc); proc.connect(ctx.destination);
+    browserRec = { stream, ctx, proc, chunks };
+    recStarted();
+  } catch (e) {
+    // getUserMedia only works on https or localhost; on the laptop's LAN IP use "Record on badge".
+    recDone(`Microphone not available: ${e.message}`);
+  }
+};
+$("recstop").onclick = async () => {
+  if (!browserRec) { send({ t: "voice", action: "stop" }); $("recstop").disabled = true; return; }
+  const { stream, ctx, proc, chunks } = browserRec;
+  browserRec = null;
+  proc.disconnect(); stream.getTracks().forEach(t => t.stop());
+  const wav = encodeWav(chunks, ctx.sampleRate);
+  ctx.close();
+  $("recstop").disabled = $("reccancel").disabled = true;
+  $("recprogress").textContent = "Creating your voice with ElevenLabs…";
+  uploading = true;
+  try {
+    const r = await fetch(`/api/voice?name=${encodeURIComponent($("voicename").value || "My voice")}`,
+      { method: "POST", body: wav, headers: { "Content-Type": "audio/wav" } });
+    const v = await r.json().catch(() => ({}));
+    recDone(r.ok && v.ready ? "Done. Press ▶ Play test to hear it." : (v.detail || "Voice setup failed, see the transcript panel."));
+  } finally { uploading = false; }
+};
+$("reccancel").onclick = () => {
+  if (browserRec) { browserRec.proc.disconnect(); browserRec.stream.getTracks().forEach(t => t.stop()); browserRec.ctx.close(); browserRec = null; }
+  else send({ t: "voice", action: "cancel" });
+  recDone("Cancelled.");
+};
+$("voicetest").onclick = () => { const a = $("voiceaudio"); a.src = `/api/voice/test?t=${Date.now()}`; a.play(); };
+
+function encodeWav(chunks, rate) {
+  const n = chunks.reduce((a, c) => a + c.length, 0);
+  const buf = new DataView(new ArrayBuffer(44 + n * 2));
+  const str = (o, s) => [...s].forEach((ch, i) => buf.setUint8(o + i, ch.charCodeAt(0)));
+  str(0, "RIFF"); buf.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt ");
+  buf.setUint32(16, 16, true); buf.setUint16(20, 1, true); buf.setUint16(22, 1, true);
+  buf.setUint32(24, rate, true); buf.setUint32(28, rate * 2, true); buf.setUint16(32, 2, true); buf.setUint16(34, 16, true);
+  str(36, "data"); buf.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) for (const x of c) { buf.setInt16(o, Math.max(-1, Math.min(1, x)) * 32767, true); o += 2; }
+  return new Blob([buf], { type: "audio/wav" });
+}
 
 connect();
 </script>

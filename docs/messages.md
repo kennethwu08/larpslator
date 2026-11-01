@@ -26,7 +26,14 @@ All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 
 {"t":"context","name":"CS lab","text":"Prof. Lee\nkernel = OS kernel\nAgenda: scheduler review"}
 {"t":"fb","val":-1,"id":3,"term":"kernel"}        // id optional (default: latest sentence); term optional (default: least-sure term)
 {"t":"reset"}                                      // forget learned term choices
+{"t":"voice","action":"record","name":"Bernard"}   // voice setup: start recording the badge mic
+{"t":"voice","action":"stop"}                      // ...stop and create the voice clone
+{"t":"voice","action":"cancel"}
 ```
+
+## Voice setup over HTTP (browser microphone)
+- `POST /api/voice?name=Bernard` with a WAV file as the body (any sample rate). Creates the clone; 400 with a reason if it's too short (<20 s) or fails.
+- `GET /api/voice/test` returns a short WAV spoken in the current voice, to check it sounds right.
 
 ## Server -> dashboard
 `status`: sent on connect and after every change
@@ -38,8 +45,11 @@ All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 
              {"id":"math","label":"Math","kind":"field","on":false,"source":"built-in"},
              {"id":"larp","label":"LARP mode","kind":"style","on":true,"source":"built-in"}],
  "context_name":"CS lab","context":"Prof. Lee\n...","languages":["Korean","Spanish","..."],
- "packs":[{"name":"CS lab","text":"...","saved_at":"2026-11-01 10:02:11"}]}
+ "packs":[{"name":"CS lab","text":"...","saved_at":"2026-11-01 10:02:11"}],
+ "voice":{"ready":true,"name":"Bernard","voice_id":"abc123"},"voice_recording":null}
 ```
+- `voice.ready` is false until voice setup is done: translations then use a stock voice, and the app should push the user to set up.
+  `voice_recording` is the seconds of speech recorded so far while a badge voice setup is running, else null.
 - `contexts` is the list of checkboxes, in display order. `kind: "field"` is a subject (the backend detects which checked field
   each sentence belongs to; with exactly one checked, it always uses that one; with none checked, no jargon is used).
   `kind: "style"` is LARP mode. `source` says where that context's data came from: `data` (files in `data/`) or
@@ -73,6 +83,12 @@ All JSON messages have a `"t"` field with the type. Audio is always raw PCM: 16 
 `metrics`: term accuracy for the learning curve (only sentences that contained jargon). `curve` is a rolling average over the last `window` ratings.
 ```json
 {"t":"metrics","n":6,"accuracy":0.67,"curve":[0,0.5,0.67,0.75,0.8,0.8],"window":5}
+```
+
+`voice_progress`: during voice setup (about once a second), then once when ElevenLabs is creating the voice
+```json
+{"t":"voice_progress","state":"recording","speech_s":25.5,"total_s":35.0}
+{"t":"voice_progress","state":"creating"}
 ```
 
 `error`: a sentence was skipped (API failure etc.); listening continues

@@ -22,8 +22,8 @@ import webrtcvad
 from dotenv import load_dotenv
 from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, Response
 from google import genai
 from google.genai import types
 from openai import OpenAI
@@ -62,7 +62,9 @@ SEND_CHUNK_BYTES = 3200                            # 100 ms of audio per WebSock
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite"
 TTS_MODEL = os.getenv("ELEVENLABS_MODEL") or "eleven_flash_v2_5"
-VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID") or "JBFqnCBsd6RMkjVDRZzb"  # premade voice as a fallback
+STOCK_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # premade ElevenLabs voice, used only until the user's voice is set up
+MIN_SAMPLE_SPEECH_S = 20                 # voice setup: least speech accepted; ~60 s sounds much more like you
+MAX_SAMPLE_S = 120
 DEFAULT_TARGET = os.getenv("TARGET_LANGUAGE") or "Korean"
 
 LANGUAGES = ["Korean", "Spanish", "French", "Mandarin Chinese", "Japanese", "German", "English"]
@@ -228,21 +230,72 @@ def clean_output(text: str) -> str:
     return text
 
 
+# ---------------------------------------------------------------- the user's voice
+class Voice:
+    """Whose voice ElevenLabs speaks in: the user's own clone once voice setup is done.
+
+    Saved to state/voice.json. ELEVENLABS_VOICE_ID in .env is used if no setup was done here
+    (e.g. on Render, whose disk is wiped on restart). Otherwise a stock voice, flagged on the dashboard.
+    """
+    FILE = HERE / "state" / "voice.json"
+
+    def __init__(self):
+        try:
+            saved = json.loads(self.FILE.read_text())
+        except (OSError, json.JSONDecodeError):
+            saved = {}
+        env_id = os.getenv("ELEVENLABS_VOICE_ID")
+        self.id = saved.get("voice_id") or env_id or STOCK_VOICE_ID
+        self.name = saved.get("name") or ("from .env" if env_id else "")
+        self.created_here = bool(saved.get("voice_id"))   # only clones made here get deleted on re-setup
+
+    @property
+    def is_users(self) -> bool:
+        return self.id != STOCK_VOICE_ID
+
+    def info(self) -> dict:
+        return {"ready": self.is_users, "name": self.name, "voice_id": self.id}
+
+    def clone(self, name: str, wav: bytes) -> dict:
+        """ElevenLabs Instant Voice Clone from a WAV recording. Replaces the previous clone made here."""
+        r = eleven_client.voices.ivc.create(
+            name=f"Larpslator - {name}", files=[("voice-setup.wav", wav, "audio/wav")],
+            remove_background_noise=True, description="Created by Larpslator voice setup",
+        )
+        if self.created_here and self.id != r.voice_id:
+            try:
+                eleven_client.voices.delete(self.id)  # free the voice slot
+            except Exception as e:
+                log.warning("couldn't delete old voice %s: %s", self.id, e)
+        self.id, self.name, self.created_here = r.voice_id, name, True
+        self.FILE.parent.mkdir(exist_ok=True)
+        self.FILE.write_text(json.dumps({"voice_id": self.id, "name": name}))
+        log.info("voice setup done: %r -> %s", name, self.id)
+        return self.info()
+
+
+VOICE = Voice()
+if not VOICE.is_users:
+    log.warning("no user voice yet: translations use a stock voice until voice setup is done on the dashboard")
+
+
 def synthesize(text: str, tone: str) -> tuple[bytes, bool]:
-    """Returns (16 kHz 16-bit mono PCM, cached). Repeated sentences cost no credits."""
+    """Returns (16 kHz 16-bit mono PCM, cached), spoken in the user's voice. Repeats cost no credits."""
     s = TONE_SETTINGS.get(tone, TONE_SETTINGS["neutral"])
     if TTS_MODEL.startswith("eleven_v3") and tone != "neutral":
         text = f"[{tone}] {text}"  # only v3 understands audio tags; other models would read them aloud
-    path = CACHE_DIR / "tts" / (hashlib.sha1(f"{VOICE_ID}|{TTS_MODEL}|{tone}|{text}".encode()).hexdigest() + ".pcm")
+    voice_id = VOICE.id
+    path = CACHE_DIR / "tts" / (hashlib.sha1(f"{voice_id}|{TTS_MODEL}|{tone}|{text}".encode()).hexdigest() + ".pcm")
     if path.exists():
         return path.read_bytes(), True
     audio = b"".join(eleven_client.text_to_speech.convert(
-        voice_id=VOICE_ID,
+        voice_id=voice_id,
         text=text,
-        model_id=TTS_MODEL,
+        model_id=TTS_MODEL,   # flash v2.5 is multilingual, so the clone speaks Korean/Spanish in your voice
         output_format="pcm_16000",
         voice_settings=VoiceSettings(
-            stability=s["stability"], style=s["style"], similarity_boost=0.75, use_speaker_boost=True
+            # High similarity so it sounds like the user rather than a generic voice.
+            stability=s["stability"], style=s["style"], similarity_boost=0.9, use_speaker_boost=True
         ),
     ))
     path.write_bytes(audio)
@@ -342,6 +395,7 @@ class State:
         self.next_id = 1
         self.utterances: dict[int, dict] = {}
         self.last_id: int | None = None
+        self.recording: dict | None = None   # voice setup in progress: {"name", "pcm", "speech_ms", "vad"}
 
     def badge_mode(self) -> str:
         fields = [d for d in FIELDS if d in self.active]
@@ -355,7 +409,8 @@ class State:
         return {"t": "status", "listening": self.listening, "target": self.target,
                 "contexts": contexts, "badge": self.badge is not None,
                 "context_name": self.context_name, "context": self.context,
-                "languages": LANGUAGES, "packs": list_contexts()}
+                "languages": LANGUAGES, "packs": list_contexts(), "voice": VOICE.info(),
+                "voice_recording": self.recording and round(self.recording["speech_ms"] / 1000, 1)}
 
 
 state = State()
@@ -526,6 +581,8 @@ async def handle_control(msg: dict):
     elif t == "reset":  # forget learned term choices (for a clean demo)
         ML.reset()
         await broadcast(ML.metrics())
+    elif t == "voice":
+        await handle_voice(msg)
     elif t == "hello":
         log.info("badge says hello")
         await tell_badge_mode()
@@ -534,6 +591,69 @@ async def handle_control(msg: dict):
         log.warning("ignored message: %s", msg)
         return
     await broadcast(state.status())
+
+
+async def handle_voice(msg: dict):
+    """Voice setup from the badge mic: record -> (read the script) -> stop -> ElevenLabs clone."""
+    action = msg.get("action")
+    if action == "record":
+        if state.badge is None:
+            await broadcast({"t": "error", "id": None, "msg": "voice setup: the badge isn't connected (record in the browser instead)"})
+            return
+        state.listening = False  # don't translate the setup reading
+        state.recording = {"name": (msg.get("name") or "My voice").strip(), "pcm": bytearray(),
+                           "speech_ms": 0, "vad": webrtcvad.Vad(2), "started": time.monotonic()}
+        log.info("voice setup: recording from the badge")
+    elif action == "cancel":
+        state.recording = None
+    elif action == "stop" and state.recording:
+        rec, state.recording = state.recording, None
+        await finish_voice_setup(rec["name"], pcm_to_wav(bytes(rec["pcm"])), rec["speech_ms"] / 1000)
+
+
+async def finish_voice_setup(name: str, wav: bytes, speech_s: float) -> str | None:
+    """Creates the clone. Returns an error message, or None on success."""
+    error = None
+    if speech_s < MIN_SAMPLE_SPEECH_S:
+        error = (f"voice setup: only {speech_s:.0f} s of speech, need at least {MIN_SAMPLE_SPEECH_S} s "
+                 "(about 60 s sounds best). Try again.")
+    else:
+        await broadcast({"t": "voice_progress", "state": "creating"})
+        try:
+            await asyncio.to_thread(VOICE.clone, name, wav)
+        except Exception as e:
+            log.error("voice setup failed: %s", e)
+            report(e)
+            error = f"voice setup failed: {type(e).__name__}: {e}"
+    if error:
+        await broadcast({"t": "error", "id": None, "msg": error})
+    await broadcast(state.status())
+    return error
+
+
+async def record_voice_sample(pcm: bytes):
+    """Badge audio during voice setup: keep it all, count the seconds that are actual speech."""
+    rec = state.recording
+    rec["pcm"] += pcm
+    whole = len(pcm) // FRAME_BYTES * FRAME_BYTES
+    for i in range(0, whole, FRAME_BYTES):
+        if rec["vad"].is_speech(pcm[i:i + FRAME_BYTES], SAMPLE_RATE):
+            rec["speech_ms"] += FRAME_MS
+    seconds = len(rec["pcm"]) / (SAMPLE_RATE * 2)
+    if int(seconds) != int((len(rec["pcm"]) - len(pcm)) / (SAMPLE_RATE * 2)):  # about once a second
+        await broadcast({"t": "voice_progress", "state": "recording",
+                         "speech_s": round(rec["speech_ms"] / 1000, 1), "total_s": round(seconds, 1)})
+    if seconds >= MAX_SAMPLE_S:
+        await handle_voice({"action": "stop"})
+
+
+def wav_seconds(wav: bytes) -> float:
+    """Length of an uploaded WAV (browser recording), for the minimum-length check."""
+    try:
+        with wave.open(io.BytesIO(wav)) as w:
+            return w.getnframes() / w.getframerate()
+    except (wave.Error, EOFError, ZeroDivisionError):
+        raise HTTPException(400, "send a WAV file")
 
 
 async def receive_loop(ws: WebSocket, on_bytes=None):
@@ -560,6 +680,31 @@ async def health():
     return {"ok": True, "badge": state.badge is not None}
 
 
+@app.post("/api/voice")
+async def upload_voice(request: Request, name: str = "My voice"):
+    """Voice setup from the browser mic: the dashboard POSTs a WAV recording here."""
+    wav = await request.body()
+    if len(wav) > 20_000_000:
+        raise HTTPException(413, "recording too long")
+    error = await finish_voice_setup(name.strip() or "My voice", wav, wav_seconds(wav))
+    if error:
+        raise HTTPException(400, error)
+    return VOICE.info()
+
+
+@app.get("/api/voice/test")
+async def test_voice(text: str = ""):
+    """Speak a short line in the current voice so the user can check it sounds like them."""
+    line = text or {"Korean": "안녕하세요, 이제 제 목소리로 통역합니다.", "Spanish": "Hola, ahora traduzco con mi propia voz."}.get(
+        state.target, "Hi, this is my voice, now translating for me.")
+    try:
+        pcm, _ = await asyncio.to_thread(synthesize, line, "neutral")
+    except Exception as e:
+        report(e)
+        raise HTTPException(502, f"{type(e).__name__}: {e}")
+    return Response(pcm_to_wav(pcm), media_type="audio/wav")
+
+
 @app.get("/")
 async def dashboard():
     return FileResponse(HERE / "static" / "dashboard.html")
@@ -575,6 +720,9 @@ async def badge_ws(ws: WebSocket):
     await broadcast(state.status())
 
     async def on_audio(pcm: bytes):
+        if state.recording:
+            await record_voice_sample(pcm)
+            return
         # Ignore mic audio while stopped or while the badge is playing a translation.
         if not state.listening or time.monotonic() < state.mute_until:
             return
