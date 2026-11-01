@@ -24,7 +24,7 @@
 
   let larp, info = null, ws = null, ctx = null, gain = null;
   let stream = null, node = null, source = null;
-  let listening = false, muted = false, resumeTimer = null, nextTime = 0;
+  let listening = false, muted = false, resumeTimer = null, nextTime = 0, held = false;
   const changeHandlers = [];
   const stats = { chunksSent: 0, bytesSent: 0, droppedWhileMuted: 0, chunksPlayed: 0, secondsPlayed: 0, level: 0 };
   window.__larpWebAudio = stats;  // read by tests and handy in the console
@@ -189,7 +189,7 @@
     stats.level = level;
     meter(level);
     if (!listening) return;
-    if (muted) { stats.droppedWhileMuted++; return; }  // translation playing: don't send it back
+    if (muted || held) { stats.droppedWhileMuted++; return; }  // translation (or a replay) playing: don't send it back
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(pcm);
       stats.chunksSent++; stats.bytesSent += pcm.byteLength;
@@ -276,5 +276,7 @@
     listening: () => listening,
     toggle: () => { if (!$("wa-listen").disabled) listening ? stop() : start(); },  // disabled while starting
     onChange: fn => changeHandlers.push(fn),
+    /** Pause sending mic audio while the dashboard replays a sentence, so it isn't translated again. */
+    hold: on => { held = on; },
   };
 })();

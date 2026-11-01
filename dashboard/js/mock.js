@@ -191,6 +191,7 @@
       return { ...this.s.voice };
     }
     voiceTestUrl() { return null; }  // no audio in mock mode
+    utteranceAudioUrl() { return null; }
     setToken() { this._status(); }
     async getConfig() { return {}; }
   }

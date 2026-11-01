@@ -72,3 +72,13 @@ def test_clone_request_sends_labels_as_a_dict(app_main, monkeypatch, tmp_path):
     except RuntimeError:
         pass
     assert json.loads(sent["labels"]) == {}
+
+
+def test_a_sentence_can_be_replayed_any_number_of_times(app_main):
+    app_main.state.utterances[7] = {"id": 7, "audio": b"\1\0" * 1600}
+    with TestClient(app_main.app) as client:
+        for _ in range(3):
+            r = client.get("/api/utterance/7/audio" + TOKEN)
+            assert r.status_code == 200 and r.headers["content-type"] == "audio/wav" and r.content[:4] == b"RIFF"
+        assert client.get("/api/utterance/8/audio" + TOKEN).status_code == 404
+        assert client.get("/api/utterance/7/audio", headers={"cf-connecting-ip": "1.2.3.4"}).status_code == 401

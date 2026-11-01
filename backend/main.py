@@ -1255,6 +1255,15 @@ async def upload_voice(request: Request, name: str = "My voice", replace: str = 
     return {"ready": True, "name": name, "voice_id": made["id"]}
 
 
+@app.get("/api/utterance/{uid}/audio", dependencies=[Depends(require_pairing)])
+async def utterance_audio(uid: int):
+    """A sentence's spoken translation (latest version, after any 👎 retry) as WAV, to replay it on the dashboard."""
+    utt = state.utterances.get(uid)
+    if not utt or not utt.get("audio"):
+        raise HTTPException(404, "no audio for that sentence")
+    return Response(pcm_to_wav(utt["audio"]), media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
+
 @app.delete("/api/voice/{voice_id}", dependencies=[Depends(require_pairing)])
 async def forget_voice(voice_id: str):
     """A device forgets its voice ("Forget My Voice"): its clone is deleted, if this server made it."""

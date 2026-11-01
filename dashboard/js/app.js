@@ -348,6 +348,29 @@
     return `<span class="source-tag ${client === "web" ? "web" : ""}">${client === "web" ? "Web" : "Badge"}</span>`;
   }
 
+  // ▶ on a sentence: play its translation again in this browser, as often as you like (press again to stop).
+  const player = new Audio();
+  let playingBtn = null;
+  function stopReplay() {
+    player.pause();
+    window.LarpWebAudio?.hold(false);
+    if (playingBtn) { playingBtn.classList.remove("sel"); playingBtn.innerHTML = icon("play"); playingBtn = null; }
+  }
+  player.onended = player.onerror = stopReplay;
+  async function replay(id, btn) {
+    const same = playingBtn === btn;
+    stopReplay();
+    if (same) return;
+    const url = larp.utteranceAudioUrl(id);
+    if (!url) { toast("No audio in demo mode"); return; }
+    player.src = url;
+    playingBtn = btn;
+    btn.classList.add("sel");
+    btn.innerHTML = icon("stop");
+    window.LarpWebAudio?.hold(true);  // the mic mustn't translate the replay
+    try { await player.play(); } catch { stopReplay(); toast("Couldn't play that sentence"); }
+  }
+
   larp.on("transcript", m => {
     const el = card(m.id);
     el.classList.add("pending");
@@ -370,10 +393,12 @@
         `<button class="chip" data-term="${esc(x.term)}" title="Wrong? Try the next translation">${esc(x.match)}<span class="to">→</span>${esc(x.choice)}</button>`).join("")}</div>` : ""}
       <div class="utt-foot">
         <span class="meta">${esc(LABELS[u.domain] || u.domain)} · ${total}${u.retry ? " · updated" : ""}</span>
+        <button class="fb play" aria-label="Play the translation again" title="Play again">${icon("play")}</button>
         <button class="fb up" aria-label="Good translation">${icon("up")}</button>
         <button class="fb down" aria-label="Wrong translation, try another">${icon("down")}</button>
       </div>
       <details class="how"${wasOpen ? " open" : ""}><summary>How it was translated ${icon("chevron")}</summary>${how(u)}</details>`;
+    el.querySelector(".play").onclick = () => replay(u.id, el.querySelector(".play"));
     el.querySelector(".up").onclick = () => larp.feedback(u.id, 1);
     el.querySelector(".down").onclick = () => larp.feedback(u.id, -1);
     el.querySelectorAll(".chip").forEach(c => { c.onclick = () => larp.feedback(u.id, -1, c.dataset.term); });

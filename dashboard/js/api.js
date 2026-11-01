@@ -163,6 +163,11 @@
       try { v ? localStorage.setItem(VOICE_KEY, JSON.stringify(v)) : localStorage.removeItem(VOICE_KEY); } catch { /* private mode */ }
       this.emit("my_voice", v);
     }
+    /** URL of a sentence's spoken translation (WAV), to replay it. */
+    utteranceAudioUrl(id) {
+      return `${this.httpBase}/api/utterance/${encodeURIComponent(id)}/audio?t=${Date.now()}`
+        + (this.token ? "&token=" + encodeURIComponent(this.token) : "");
+    }
     /** URL of a short WAV in a voice (a voice id; default the badge's), for an <audio> element. */
     voiceTestUrl(voiceId) {
       return `${this.httpBase}/api/voice/test?t=${Date.now()}${voiceId ? "&voice=" + encodeURIComponent(voiceId) : ""}`
