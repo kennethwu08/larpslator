@@ -92,16 +92,20 @@ The backend controls the badge. The dashboard's **Badge** panel lists every badg
 - The panel shows the address for the badge's `config.h` (`ws://<this laptop's IP>:8000/ws/badge`), which changes with the network (hotspot).
 - All badge info messages are optional, so firmware that only streams audio and plays the translation still works. Protocol: [../docs/messages.md](../docs/messages.md).
 
-## Voice setup (do this first)
+## Voice setup (optional)
 
-Translations are spoken in **the user's own voice**, cloned with ElevenLabs Instant Voice Cloning. Until setup is done, a stock voice is used and the dashboard shows a warning.
+Translations can be spoken in **the speaker's own voice**, cloned with ElevenLabs Instant Voice Cloning. A voice
+belongs to the **device it was set up on**: a phone's clone is only used for what's said into that phone, and every
+other device keeps the standard voice, so one person's voice never speaks someone else's sentences. The browser keeps
+its clone's id (localStorage) and sends it with its audio; **Forget My Voice** in the voice sheet deletes it (for when
+someone else picks up the device). **Record on Badge** sets the badge's voice the same way.
 
 1. Open the dashboard, enter your name under **Your voice**, and press **Record on badge** or **Record in browser**.
 2. Read the script shown, at your normal pace, somewhere quiet: about 60 s (minimum 20 s of speech).
 3. Press **Stop & create voice**, then **▶ Play test** to check it sounds like you.
 
 - The clone is multilingual (`eleven_flash_v2_5`), so it speaks Korean or Spanish in your voice. `similarity_boost` is 0.9 to stay close to you.
-- It's saved in `state/voice.json` and reused on restart. Redoing setup replaces the old clone (and deletes it from ElevenLabs to free the slot).
+- The badge's voice is saved in `state/voice.json`; clones made here are listed in `state/clones.json` (only those are ever deleted). Redoing setup on a device replaces its old clone (and deletes it from ElevenLabs to free the slot).
 - The voice id is shown on the dashboard. Put it in `.env` as `ELEVENLABS_VOICE_ID` to keep it if `state/` is cleared, or to share one voice across laptops.
 - **Instant voice cloning needs a paid ElevenLabs plan (Starter or above).** On the free plan, setup fails with an error from ElevenLabs.
 - "Record in browser" needs `localhost` or https (browsers block the mic on plain `http://<lan-ip>`). Otherwise use the badge.
@@ -117,7 +121,7 @@ Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fiel
 
 ## How it works
 
-1. **VAD.** `webrtcvad` checks every 30 ms frame. A sentence ends after 0.7 s of silence (or after 15 s). Blips under 0.4 s are dropped, because speech to text invents words for them. Pressing Stop on the dashboard ends a sentence immediately.
+1. **VAD.** `webrtcvad` checks every 30 ms frame. A sentence ends after 0.4 s of silence (or after 15 s), so translation starts within ~0.5 s of the speaker stopping. A noise gate learns the background level (the quietest frame of the last 1.5 s) and only frames ~8 dB above it count as speech, so fans, crowds and music neither start sentences nor keep them from ending; quiet voices are boosted before `webrtcvad` judges them. Speech must last 90 ms to start a sentence, and blips under 0.3 s are dropped, because speech to text invents words for them. Pressing Stop on the dashboard ends a sentence immediately.
 2. **Speech to text: ElevenLabs Scribe** (`scribe_v2`, same key as the voice) transcribes the sentence and detects its language (Korean and Tamil too). The checked fields' jargon is sent as `keyterms` so it's spelled right ("kernel", not "colonel"). Featherless has no speech-to-text; a speech model run locally on the laptop was slower (2.9 s vs 0.6 s) and misheard jargon ("colonel" for "kernel") in testing.
 3. **Local ML** (`ml.py`, ~10 ms on CPU):
    - **Field:** MiniLM sentence embedding → LogisticRegression, trained at startup on the training sentences and glossary terms. Unchecked fields are masked out. Smoothed over the conversation so one odd sentence doesn't flip it.
@@ -201,4 +205,4 @@ See [../docs/messages.md](../docs/messages.md) for every WebSocket message (with
 | `SENTRY_DSN` | empty = Sentry off |
 | `SENTRY_ENVIRONMENT` | `local` |
 | `PUBLIC_URL` | empty; the cloudflared https address, for the pairing links |
-| `TARGET_LANGUAGE` | `Korean` |
+| `TARGET_LANGUAGE` | `Korean`: what English speech is translated into. Any other language (Tamil, Korean, ...) is always translated into English |

@@ -26,7 +26,9 @@
   $("pill-mock").hidden = !larp.mock;
   window.LarpMonitor?.init(larp);
   window.LarpWebAudio?.init(larp);  // WEB_AUDIO: this browser's mic and speaker (on unless the backend turned it off)
-  window.LarpWebAudio?.onChange(() => { if (status) { showListen(); showBadges(status.badges || []); showSetup(status); } });
+  window.LarpWebAudio?.onChange(() => {
+    if (status) { showListen(); showBadges(status.badges || []); showSetup(status); showVoice(voiceInUse(), status.voice_recording); }
+  });
   larp.on("open", () => {
     setConn("Connected", "on");
     clearTimeout(unreachableTimer);
@@ -62,7 +64,7 @@
     $("lang").value = m.target;
 
     showContexts(m.contexts || []);
-    showVoice(m.voice || {}, m.voice_recording);
+    showVoice(voiceInUse(), m.voice_recording);
     showBadges(m.badges || []);
     showNotes(m, first);
     showSetup(m);
@@ -185,9 +187,16 @@
     $("rec-browser").disabled = on;
     $("rec-stop").disabled = $("rec-cancel").disabled = !on || uploading;
   }
+  // Whose voice speaks the translations: this device's own clone when it's the mic (no badge), else the badge's.
+  // A voice set up on one device is never used for anyone else's device.
+  function voiceInUse() {
+    if (useBrowser()) return larp.myVoice ? { ready: true, name: larp.myVoice.name } : { ready: false };
+    return status?.voice || {};
+  }
+  larp.on("my_voice", () => { if (status) { showVoice(voiceInUse(), status.voice_recording); showSetup(status); } });
   function showVoice(v, badgeRecording) {
-    $("voice-value").textContent = v.ready ? v.name || "Your voice" : "Not set up";
-    $("voice-value").style.color = v.ready ? "" : "var(--orange)";
+    $("voice-value").textContent = v.ready ? v.name || "Your voice" : "Standard voice";
+    $("voice-forget").hidden = !larp.myVoice;
     const recordingOnBadge = badgeRecording !== null && badgeRecording !== undefined;
     if (!micRecording && !uploading) setRecording(recordingOnBadge);
     if (v.ready && $("rec-progress").textContent.startsWith("Creating")) $("rec-progress").textContent = "Done. Play Sample to hear it.";
@@ -239,8 +248,13 @@
     setRecording(false);
     $("rec-progress").textContent = "Cancelled.";
   };
+  $("voice-forget").onclick = async () => {
+    if (!confirm("Forget your voice on this device? Translations here go back to the standard voice.")) return;
+    await larp.forgetVoice();
+    $("rec-progress").textContent = "Forgotten. This device uses the standard voice.";
+  };
   $("voice-test").onclick = async () => {
-    const url = larp.voiceTestUrl();
+    const url = larp.voiceTestUrl(useBrowser() ? larp.myVoice?.id || "standard" : undefined);
     if (!url) { toast("No audio in demo mode"); return; }
     const audio = new Audio(url);
     try { await audio.play(); } catch { toast("Couldn't play the sample"); }
@@ -413,14 +427,14 @@
 
   // ---------------------------------------------------------------- setup checklist
   function showSetup(m) {
-    const badges = m.badges || [], badge = badges.find(b => b.active), voice = m.voice?.ready;
+    const badges = m.badges || [], badge = badges.find(b => b.active), voice = voiceInUse().ready;
     const browser = !badge && useBrowser();  // no badge needed: this browser's mic and speaker work
     $("setup").hidden = !!((badge || browser) && voice);
     $("step-badge").className = "step" + (badge || browser ? " done" : "");
     $("step-voice").className = "step" + (voice ? " done" : "");
     $("setup-badge-value").textContent = badge ? badge.name || badge.id : badges.length ? `${badges.length} available`
       : browser ? "Using this browser" : "None found";
-    $("setup-voice-value").textContent = voice ? m.voice.name || "Done" : "";
+    $("setup-voice-value").textContent = voice ? voiceInUse().name || "Done" : "Optional";
   }
   $("setup-badge").onclick = () => {
     const badges = status?.badges || [];

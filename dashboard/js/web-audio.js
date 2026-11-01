@@ -53,6 +53,7 @@
       if (gain) gain.gain.value = e.target.value / 100;
     };
     $("wa-volume").style.setProperty("--pct", $("wa-volume").value + "%");
+    larp.on("my_voice", v => send({ t: "my_voice", id: v ? v.id : "" }));  // set up or forgotten while connected
     larp.on("transcript", m => { if (m.client === "web") row(m.id, m.source, "Translating…"); });
     larp.on("utterance", u => { if (u.client === "web") row(u.id, u.source, u.translation); });
     larp.on("error", m => {
@@ -75,7 +76,10 @@
   // ---------------------------------------------------------------- the socket
   function connect() {
     return new Promise((resolve, reject) => {
-      const q = larp.token ? `?token=${encodeURIComponent(larp.token)}` : "";
+      const params = new URLSearchParams();
+      if (larp.token) params.set("token", larp.token);
+      if (larp.myVoice) params.set("voice", larp.myVoice.id);  // translations of what's said here use this device's voice
+      const q = params.toString() ? "?" + params : "";
       const sock = new WebSocket(`${larp.secure ? "wss" : "ws"}://${larp.address}${info.websocket}${q}`);
       sock.binaryType = "arraybuffer";
       sock.onopen = () => { ws = sock; resolve(); };
@@ -132,7 +136,7 @@
       await withTimeout(ctx.resume(), "Audio output");
       if (!gain) { gain = ctx.createGain(); gain.gain.value = $("wa-volume").value / 100; gain.connect(ctx.destination); }
       stats.phase = "microphone";
-      stream = await withTimeout(navigator.mediaDevices.getUserMedia({ audio: true }), "The microphone");
+      stream = await withTimeout(navigator.mediaDevices.getUserMedia({ audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } }), "The microphone");
       stats.phase = "connecting";
       if (!ws) await withTimeout(connect(), "The backend");
       stats.phase = "capture";

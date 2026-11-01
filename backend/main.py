@@ -8,6 +8,7 @@ all run locally (ml.py), so they cost nothing.
 Run:  uvicorn main:app --host 0.0.0.0 --port 8000   (from the backend/ folder)
 """
 import asyncio
+import collections
 import contextlib
 import hashlib
 import io
@@ -104,9 +105,16 @@ def stage(name: str):
 SAMPLE_RATE = 16000
 FRAME_MS = 30                                      # webrtcvad accepts 10/20/30 ms frames
 FRAME_BYTES = SAMPLE_RATE * FRAME_MS // 1000 * 2   # 960 bytes of 16-bit mono
-SILENCE_END_MS = 700                               # this much silence ends a sentence
+SILENCE_END_MS = 400                               # this much silence ends a sentence (+ <=100 ms of mic chunking)
 PREROLL_MS = 300                                   # audio kept from before speech starts
-MIN_SPEECH_MS = 400                                # shorter blips are dropped (speech to text invents words for them)
+MIN_SPEECH_MS = 300                                # shorter blips are dropped (speech to text invents words for them)
+START_FRAMES = 3                                   # speech must last this many frames (90 ms) to start a sentence
+# Noise gate: a frame only counts as speech if it's this much louder than the background noise, i.e. the quietest
+# frame of the last NOISE_WINDOW_MS (pauses between words keep that low while someone talks). webrtcvad alone calls
+# steady noise (fans, crowd, music) speech, so noise started sentences, or kept them from ending until 15 s.
+NOISE_RATIO = 2.5                                  # ~8 dB above the background
+MIN_SPEECH_RMS = 60                                # and never quieter than this (16-bit RMS; normal speech ~1000+)
+NOISE_WINDOW_MS = 1500
 MAX_SENTENCE_MS = 15000                            # force a cut on very long speech
 RESUME_AFTER_PLAYBACK_S = 0.3                      # badge unmutes this long after playback ends
 SEND_CHUNK_BYTES = 3200                            # 100 ms of audio per WebSocket frame
@@ -127,9 +135,10 @@ STT_MODEL = os.getenv("ELEVENLABS_STT_MODEL") or "scribe_v2"   # ~0.6 s for a se
 STOCK_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # premade ElevenLabs voice, used only until the user's voice is set up
 MIN_SAMPLE_SPEECH_S = 20                 # voice setup: least speech accepted; ~60 s sounds much more like you
 MAX_SAMPLE_S = 120
-DEFAULT_TARGET = os.getenv("TARGET_LANGUAGE") or "Korean"
-
-LANGUAGES = ["Korean", "English", "Tamil", "Spanish", "French", "Mandarin Chinese", "Japanese", "German"]
+# English is the hub: English speech is translated into the chosen language, any other language into English.
+HUB_LANGUAGE = "English"
+LANGUAGES = ["Korean", "Tamil", "Spanish", "French", "Mandarin Chinese", "Japanese", "German"]  # what English goes into
+DEFAULT_TARGET = os.getenv("TARGET_LANGUAGE") if os.getenv("TARGET_LANGUAGE") in LANGUAGES else "Korean"
 # Lower stability = more expressive; higher style = more exaggerated delivery.
 TONE_SETTINGS = {
     "neutral":  {"stability": 0.50, "style": 0.00},
@@ -165,12 +174,14 @@ ML = LocalML()
 class Segmenter:
     """Feeds raw PCM through webrtcvad and returns finished sentences as PCM bytes."""
 
-    def __init__(self, aggressiveness: int = 2):
+    def __init__(self, aggressiveness: int = 3):  # 3 = webrtcvad's strictest about what's speech
         self.vad = webrtcvad.Vad(aggressiveness)
+        self.recent_rms: collections.deque = collections.deque(maxlen=NOISE_WINDOW_MS // FRAME_MS)  # kept across resets
         self.reset()
 
     def reset(self):
         self.buf = b""
+        self.run = 0      # consecutive speech frames before a sentence starts
         self.preroll: list[bytes] = []
         self.frames: list[bytes] = []
         self.in_speech = False
@@ -185,15 +196,16 @@ class Segmenter:
         while len(self.buf) >= FRAME_BYTES:
             frame, self.buf = self.buf[:FRAME_BYTES], self.buf[FRAME_BYTES:]
             t = time.perf_counter()
-            speech = self.vad.is_speech(frame, SAMPLE_RATE)
+            speech = self.is_speech(frame)
             self.vad_s += time.perf_counter() - t
 
             if not self.in_speech:
                 self.preroll = (self.preroll + [frame])[-(PREROLL_MS // FRAME_MS):]
-                if speech:
+                self.run = self.run + 1 if speech else 0
+                if self.run >= START_FRAMES:  # not a click or a bump: start (with the preroll, so no word is cut)
                     self.in_speech = True
                     self.frames = list(self.preroll)
-                    self.speech_ms = self.silence_ms = 0
+                    self.speech_ms, self.silence_ms = self.run * FRAME_MS, 0
                 continue
 
             self.frames.append(frame)
@@ -206,6 +218,20 @@ class Segmenter:
                 if sentence := self._finish():
                     done.append(sentence)
         return done
+
+    def is_speech(self, frame: bytes) -> bool:
+        """The frame is clearly louder than the background noise, and webrtcvad says it sounds like speech."""
+        samples = np.frombuffer(frame, np.int16).astype(np.float32)
+        rms = float(np.sqrt(np.mean(samples ** 2)))
+        noise = min(self.recent_rms, default=0.0)
+        self.recent_rms.append(rms)
+        if rms < max(MIN_SPEECH_RMS, noise * NOISE_RATIO):
+            return False
+        # webrtcvad ignores quiet audio by itself, so soft or distant voices were missed: give it a normal level
+        # (only for this decision; noise is already filtered out above).
+        if rms < 1000:
+            frame = (samples * min(8.0, 1000 / rms)).clip(-32768, 32767).astype(np.int16).tobytes()
+        return self.vad.is_speech(frame, SAMPLE_RATE)
 
     def flush(self) -> tuple[bytes, float] | None:
         """End the current sentence now (end of file, or Stop pressed)."""
@@ -246,6 +272,12 @@ def transcribe(pcm: bytes, keyterms: list[str] | None = None) -> tuple[str, str]
     )
     code = (getattr(r, "language_code", "") or "").lower()
     return (r.text or "").strip(), STT_LANGUAGES.get(code, code)
+
+
+def target_for(spoken: str, chosen: str) -> str:
+    """English is the primary language: someone speaking Tamil (or Korean, ...) is translated into English;
+    English is translated into the chosen language. Unknown language: treated as English."""
+    return HUB_LANGUAGE if spoken and spoken != HUB_LANGUAGE.lower() else chosen
 
 
 def same_language(spoken: str, target: str) -> bool:
@@ -349,11 +381,51 @@ def clean_output(text: str, target: str = "") -> str:
 
 
 # ---------------------------------------------------------------- the user's voice
-class Voice:
-    """Whose voice ElevenLabs speaks in: the user's own clone once voice setup is done.
+VOICE_ID = re.compile(r"^[A-Za-z0-9]{8,40}$")
+CLONES_FILE = HERE / "state" / "clones.json"   # ids of the clones made here: only these may be deleted
 
-    Saved to state/voice.json. ELEVENLABS_VOICE_ID in .env is used if no setup was done on this machine
-    (e.g. another laptop). Otherwise a stock voice, flagged on the dashboard.
+
+def valid_voice(voice_id) -> str:
+    return voice_id if isinstance(voice_id, str) and VOICE_ID.match(voice_id) else ""
+
+
+def clones_made_here() -> list[str]:
+    try:
+        return json.loads(CLONES_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def create_clone(name: str, wav: bytes) -> str:
+    """ElevenLabs Instant Voice Clone from a WAV recording. Returns the new voice id."""
+    r = eleven_client.voices.ivc.create(
+        name=f"Larpslator - {name}", files=[("voice-setup.wav", wav, "audio/wav")],
+        remove_background_noise=True, description="Created by Larpslator voice setup",
+    )
+    CLONES_FILE.parent.mkdir(exist_ok=True)
+    CLONES_FILE.write_text(json.dumps(clones_made_here() + [r.voice_id]))
+    log.info("voice clone made: %r -> %s", name, r.voice_id)
+    return r.voice_id
+
+
+def delete_clone(voice_id: str):
+    """Frees the ElevenLabs voice slot, if this server made that clone (never someone else's voice)."""
+    made = clones_made_here()
+    if voice_id not in made:
+        return
+    try:
+        eleven_client.voices.delete(voice_id)
+    except Exception as e:
+        log.warning("couldn't delete voice %s: %s", voice_id, e)
+    CLONES_FILE.write_text(json.dumps([v for v in made if v != voice_id]))
+
+
+class Voice:
+    """The badge's voice: a clone once voice setup is done on the badge, else a stock voice.
+
+    Browsers have their own voice (each device keeps its clone's id and sends it), so one person's voice is never
+    used for someone else's sentences on another device. Saved to state/voice.json. ELEVENLABS_VOICE_ID in .env
+    is used if no setup was done on this machine.
     """
     FILE = HERE / "state" / "voice.json"
 
@@ -375,17 +447,11 @@ class Voice:
         return {"ready": self.is_users, "name": self.name, "voice_id": self.id}
 
     def clone(self, name: str, wav: bytes) -> dict:
-        """ElevenLabs Instant Voice Clone from a WAV recording. Replaces the previous clone made here."""
-        r = eleven_client.voices.ivc.create(
-            name=f"Larpslator - {name}", files=[("voice-setup.wav", wav, "audio/wav")],
-            remove_background_noise=True, description="Created by Larpslator voice setup",
-        )
-        if self.created_here and self.id != r.voice_id:
-            try:
-                eleven_client.voices.delete(self.id)  # free the voice slot
-            except Exception as e:
-                log.warning("couldn't delete old voice %s: %s", self.id, e)
-        self.id, self.name, self.created_here = r.voice_id, name, True
+        """Badge voice setup. Replaces the previous clone made here."""
+        voice_id = create_clone(name, wav)
+        if self.created_here and self.id != voice_id:
+            delete_clone(self.id)  # free the voice slot
+        self.id, self.name, self.created_here = voice_id, name, True
         self.FILE.parent.mkdir(exist_ok=True)
         self.FILE.write_text(json.dumps({"voice_id": self.id, "name": name}))
         log.info("voice setup done: %r -> %s", name, self.id)
@@ -394,15 +460,15 @@ class Voice:
 
 VOICE = Voice()
 if not VOICE.is_users:
-    log.warning("no user voice yet: translations use a stock voice until voice setup is done on the dashboard")
+    log.info("badge voice: stock (until voice setup is done on the badge)")
 
 
-def synthesize(text: str, tone: str) -> tuple[bytes, bool]:
+def synthesize(text: str, tone: str, voice_id: str = "") -> tuple[bytes, bool]:
     """Returns (16 kHz 16-bit mono PCM, cached), spoken in the user's voice. Repeats cost no credits."""
     s = TONE_SETTINGS.get(tone, TONE_SETTINGS["neutral"])
     if TTS_MODEL.startswith("eleven_v3") and tone != "neutral":
         text = f"[{tone}] {text}"  # only v3 understands audio tags; other models would read them aloud
-    voice_id = VOICE.id
+    voice_id = voice_id or STOCK_VOICE_ID
     path = CACHE_DIR / "tts" / (hashlib.sha1(f"{voice_id}|{TTS_MODEL}|{tone}|{text}".encode()).hexdigest() + ".pcm")
     if path.exists():
         return path.read_bytes(), True
@@ -435,17 +501,19 @@ def translate_and_speak(r: dict, timing: dict):
 
     t = time.perf_counter()
     with stage("elevenlabs"):
-        r["audio"], cached = synthesize(r["translation"], r["tone"])
+        r["audio"], cached = synthesize(r["translation"], r["tone"], r.get("voice_id", ""))
     timing["elevenlabs"] = 0 if cached else round((time.perf_counter() - t) * 1000)
     timing["total"] = round(sum(v for k, v in timing.items() if k != "total"))
 
 
 def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
-                 active: set[str] | None = None, on_transcript=None, client: str = "badge") -> dict:
+                 active: set[str] | None = None, on_transcript=None, client: str = "badge",
+                 voice_id: str = "") -> dict:
     """Runs one sentence through every stage. Raises on API errors; callers decide to skip.
 
     `active` is the set of checked contexts (fields and "larp"); default: all fields, no LARP.
     `client` ("badge" or "web") is where the audio came from; it tags the Sentry trace and any errors.
+    `voice_id`: whose voice speaks the translation (that client's own clone; empty = stock voice).
     Returns {"source", "lang", "target", "domain", "domain_probs", "tone", "terms",
              "context_lines", "larp", "translation", "audio", "timing_ms"}. Cached stages report 0 ms.
     """
@@ -460,7 +528,10 @@ def run_pipeline(pcm: bytes, target: str, context: str, vad_s: float = 0.0,
         with stage("speech_to_text"):
             source, lang = transcribe(pcm, ML.keyterms(active))
         timing["stt"] = round((time.perf_counter() - t) * 1000)
-        r = {"source": source, "lang": lang, "target": target, "translation": "", "audio": b"", "timing_ms": timing}
+        target = target_for(lang, target)
+        tx.set_tag("target", target)
+        r = {"source": source, "lang": lang, "target": target, "translation": "", "audio": b"", "timing_ms": timing,
+             "voice_id": voice_id}
         if not source:
             return r
         if on_transcript:
@@ -554,6 +625,11 @@ class AudioClient:
         """Whether mic audio from this client should be translated right now."""
         raise NotImplementedError
 
+    @property
+    def voice_id(self) -> str:
+        """Whose voice speaks this client's translations."""
+        return VOICE.id if VOICE.is_users else ""
+
     def take_audio(self, data: bytes) -> bytes:
         """Check a mic frame: drop oversized ones, keep samples aligned, measure rate and loudness."""
         if len(data) > MAX_AUDIO_FRAME:
@@ -616,9 +692,14 @@ class WebClient(AudioClient):
     def __init__(self, ws: WebSocket, n: int):
         super().__init__(ws, f"web-{n}")
         self.listening = False
+        self.own_voice = valid_voice(ws.query_params.get("voice"))  # this browser's clone; empty = stock voice
 
     def hears(self) -> bool:
         return self.listening
+
+    @property
+    def voice_id(self) -> str:
+        return self.own_voice
 
 
 # ---------------------------------------------------------------- pairing (who may connect)
@@ -823,7 +904,7 @@ async def feed_audio(client: AudioClient, pcm: bytes):
 
 def public(utt: dict) -> dict:
     """Utterance as sent to the dashboard (no audio, no internals)."""
-    return {"t": "utterance", **{k: v for k, v in utt.items() if k not in ("audio", "rejected")}}
+    return {"t": "utterance", **{k: v for k, v in utt.items() if k not in ("audio", "rejected", "voice_id")}}
 
 
 def log_timing(uid: int, r: dict, client: str = "badge"):
@@ -848,7 +929,7 @@ async def process_sentence(pcm: bytes, vad_s: float, client: AudioClient):
 
     try:
         r = await asyncio.to_thread(run_pipeline, pcm, state.target, state.context, vad_s,
-                                    set(state.active), on_transcript, client.kind)
+                                    set(state.active), on_transcript, client.kind, client.voice_id)
     except Exception as e:
         # Reported here, with the sentence's id, so the dashboard can mark that sentence as failed.
         log.error("sentence %d from %s skipped: %s: %s", uid, client.kind, type(e).__name__, e)
@@ -1046,7 +1127,7 @@ async def handle_control(msg: dict):
         state.context_name = msg.get("name") or state.context_name or "default"
         save_context(state.context_name, state.context)
         log.info("context pack %r saved (%d chars)", state.context_name, len(state.context))
-    elif t == "lang" and msg.get("value"):
+    elif t == "lang" and msg.get("value") in LANGUAGES:
         state.target = msg["value"]
     elif t == "reset":  # forget learned term choices (for a clean demo)
         ML.reset()
@@ -1079,8 +1160,9 @@ async def handle_voice(msg: dict):
         await finish_voice_setup(rec["name"], pcm_to_wav(bytes(rec["pcm"])), rec["speech_ms"] / 1000)
 
 
-async def finish_voice_setup(name: str, wav: bytes, speech_s: float) -> str | None:
-    """Creates the clone. Returns an error message, or None on success."""
+async def finish_voice_setup(name: str, wav: bytes, speech_s: float, make=None) -> str | None:
+    """Creates the clone: the badge's (VOICE.clone), or `make(name, wav)` for a browser's own voice.
+    Returns an error message, or None on success."""
     error = None
     if speech_s < MIN_SAMPLE_SPEECH_S:
         error = (f"voice setup: only {speech_s:.0f} s of speech, need at least {MIN_SAMPLE_SPEECH_S} s "
@@ -1088,7 +1170,7 @@ async def finish_voice_setup(name: str, wav: bytes, speech_s: float) -> str | No
     else:
         await broadcast({"t": "voice_progress", "state": "creating"})
         try:
-            await asyncio.to_thread(VOICE.clone, name, wav)
+            await asyncio.to_thread(make or VOICE.clone, name, wav)
         except Exception as e:
             log.error("voice setup failed: %s", e)
             report(e, step="voice_clone")
@@ -1155,25 +1237,41 @@ async def client_config():
 
 
 @app.post("/api/voice", dependencies=[Depends(require_pairing)])
-async def upload_voice(request: Request, name: str = "My voice"):
-    """Voice setup from the browser mic: the dashboard POSTs a WAV recording here."""
+async def upload_voice(request: Request, name: str = "My voice", replace: str = ""):
+    """Voice setup from the browser mic: the dashboard POSTs a WAV recording here. The clone is that device's own
+    (it keeps the returned voice_id and sends it with its audio); nobody else's translations use it.
+    `replace`: the device's previous clone, deleted once the new one is made."""
     wav = await request.body()
     if len(wav) > 20_000_000:
         raise HTTPException(413, "recording too long")
-    error = await finish_voice_setup(name.strip() or "My voice", wav, wav_seconds(wav))
+    made = {}
+    name = name.strip() or "My voice"
+    error = await finish_voice_setup(name, wav, wav_seconds(wav), lambda n, w: made.setdefault("id", create_clone(n, w)))
     if error:
         raise HTTPException(400, error)
-    return VOICE.info()
+    if valid_voice(replace) and replace != made["id"]:
+        await asyncio.to_thread(delete_clone, replace)
+    return {"ready": True, "name": name, "voice_id": made["id"]}
+
+
+@app.delete("/api/voice/{voice_id}", dependencies=[Depends(require_pairing)])
+async def forget_voice(voice_id: str):
+    """A device forgets its voice ("Forget My Voice"): its clone is deleted, if this server made it."""
+    if valid_voice(voice_id) and voice_id != VOICE.id:
+        await asyncio.to_thread(delete_clone, voice_id)
+    return {"ok": True}
 
 
 @app.get("/api/voice/test", dependencies=[Depends(require_pairing)])
-async def test_voice(text: str = ""):
-    """Speak a short line in the current voice so the user can check it sounds like them."""
+async def test_voice(text: str = "", voice: str | None = None):
+    """Speak a short line so the user can check the voice: `voice` = a device's own clone ("standard" or empty =
+    the standard voice); without it, the badge's voice."""
     line = text or {"Korean": "안녕하세요, 이제 제 목소리로 통역합니다.", "Spanish": "Hola, ahora traduzco con mi propia voz.",
                     "Tamil": "வணக்கம், இப்போது என் குரலில் மொழிபெயர்க்கிறேன்."}.get(
         state.target, "Hi, this is my voice, now translating for me.")
     try:
-        pcm, _ = await asyncio.to_thread(synthesize, line, "neutral")
+        voice_id = VOICE.id if voice is None else valid_voice(voice)
+        pcm, _ = await asyncio.to_thread(synthesize, line, "neutral", voice_id)
     except Exception as e:
         report(e, step="elevenlabs")
         raise HTTPException(502, f"{type(e).__name__}: {e}")
@@ -1261,6 +1359,8 @@ async def web_client_ws(ws: WebSocket):
                 await state.queue.put(("sentence", *sentence, client))
             log.info("web audio %s: %s", client.id, msg["state"])
             await broadcast(state.status())
+        elif msg.get("t") == "my_voice":  # this browser set up (or forgot) its voice while connected
+            client.own_voice = valid_voice(msg.get("id"))
         else:
             await handle_control(msg)
 

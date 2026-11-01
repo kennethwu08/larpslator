@@ -13,7 +13,7 @@ def test_badge_sentence_is_translated_and_played_back_to_the_badge(app_main, mon
     monkeypatch.setattr(app_main, "transcribe", lambda pcm, prompt="": ("Can you merge my branch?", "english"))
     monkeypatch.setattr(app_main, "translate", lambda *a, **k: ("제 브랜치를 병합해 줄 수 있나요?", False))
     tts = (np.arange(1600) % 100).astype(np.int16).tobytes()
-    monkeypatch.setattr(app_main, "synthesize", lambda text, tone: (tts, False))
+    monkeypatch.setattr(app_main, "synthesize", lambda text, tone, voice_id="": (tts, False))
 
     with TestClient(app_main.app) as client:
         with client.websocket_connect("/ws/dashboard" + TOKEN) as dash, \

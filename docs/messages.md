@@ -62,6 +62,8 @@ dashboard hides the section) and `/ws/web` refuses the connection. The flag is c
 - Browser → server: binary frames of 16 kHz 16-bit mono PCM mic audio (the dashboard sends 100 ms = 3200 bytes).
 - `{"t":"mode","state":"listen"}` / `{"t":"mode","state":"stop"}` on **this** socket is the browser's own Listen/Stop,
   independent of the badge. Stop also ends the sentence being spoken (like the dashboard's Stop does for the badge).
+- `?voice=<voice_id>` on the URL: this browser's own clone (from `POST /api/voice`), used only for sentences said here;
+  without it, the standard voice. `{"t":"my_voice","id":"<voice_id>"}` changes it while connected (`""` = standard).
 - Any other message on this socket (`fb`, `context`, `toggle`, `lang`, ...) works exactly as on `/ws/dashboard`.
 - Server → browser: the translation as binary frames of 16 kHz 16-bit mono PCM (3200 bytes, paced at real time),
   only for sentences this browser said. The browser plays them with Web Audio at 16 kHz and doesn't send mic audio until
@@ -74,7 +76,8 @@ dashboard hides the section) and `/ws/web` refuses the connection. The flag is c
 ```json
 {"t":"mode","state":"listen"}                      // or "stop"
 {"t":"toggle","id":"larp","on":true}               // a context checkbox: pickleball | tennis | cs | math | larp
-{"t":"lang","value":"Spanish"}                     // target language
+{"t":"lang","value":"Spanish"}                     // what English is translated into (one of status.languages);
+                                                    // other spoken languages are always translated into English
 {"t":"context","name":"CS lab","text":"Prof. Lee\nkernel = OS kernel\nAgenda: scheduler review"}
 {"t":"fb","val":-1,"id":3,"term":"kernel"}        // id optional (default: latest sentence); term optional (default: least-sure term)
 {"t":"reset"}                                      // forget learned term choices
@@ -89,8 +92,11 @@ dashboard hides the section) and `/ws/web` refuses the connection. The flag is c
 ```
 
 ## Voice setup over HTTP (browser microphone)
-- `POST /api/voice?name=Bernard` with a WAV file as the body (any sample rate). Creates the clone; 400 with a reason if it's too short (<20 s) or fails.
-- `GET /api/voice/test` returns a short WAV spoken in the current voice, to check it sounds right.
+- `POST /api/voice?name=Bernard&replace=<old voice_id>` with a WAV file as the body (any sample rate). Creates a clone for
+  **this device** and returns `{"ready":true,"name":"Bernard","voice_id":"..."}`; the device keeps the id and sends it with
+  its audio (`/ws/web?voice=`). `replace`: the device's previous clone, deleted. 400 with a reason if it's too short (<20 s) or fails.
+- `DELETE /api/voice/<voice_id>`: the device forgets its voice (the clone is deleted if this server made it).
+- `GET /api/voice/test?voice=<voice_id>` returns a short WAV in that voice (`voice=standard`: the standard voice; no `voice`: the badge's).
 
 ## Server -> dashboard
 `status`: sent on connect and after every change
@@ -118,7 +124,8 @@ dashboard hides the section) and `/ws/web` refuses the connection. The flag is c
              "mic_kbps":256,"mic_level_db":-28.5,"audio_dropped":0}]
   ```
 - `web_audio`: `{"enabled": bool, "clients": n, "listening": n}`, the web audio fallback (see above).
-- `voice.ready` is false until voice setup is done: translations then use a stock voice, and the app should push the user to set up.
+- `voice` is the **badge's** voice: `ready` is false until voice setup is done on the badge (then the standard voice is used).
+  Browsers have their own voice (see web audio).
   `voice_recording` is the seconds of speech recorded so far while a badge voice setup is running, else null.
 - `contexts` is the list of checkboxes, in display order. `kind: "field"` is a subject (the backend detects which checked field
   each sentence belongs to; with exactly one checked, it always uses that one; with none checked, no jargon is used).

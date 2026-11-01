@@ -41,6 +41,11 @@
   }
 
   const SERVER_KEY = "larpslator-server";
+  // This device's own voice clone { id, name }. Sent with this browser's audio; no other device uses it.
+  const VOICE_KEY = "larpslator-voice";
+  function loadVoice() {
+    try { return JSON.parse(localStorage.getItem(VOICE_KEY)) || null; } catch { return null; }
+  }
   const bareHost = s => s.trim().replace(/^\w+:\/\//, "").replace(/\/+$/, "");
   function serverAddress() {
     const fromUrl = new URLSearchParams(location.search).get("server");
@@ -61,6 +66,7 @@
       this.secure = location.protocol === "https:";
       this.connected = false;
       this.token = loadToken();
+      this.myVoice = loadVoice();
       this._connect();
     }
 
@@ -135,17 +141,32 @@
     voiceStop() { this._send({ t: "voice", action: "stop" }); }
     voiceCancel() { this._send({ t: "voice", action: "cancel" }); }
 
-    /** Voice setup from a browser recording (see Larp.recordMicrophone). Resolves to status.voice. */
+    /** Voice setup from a browser recording (see Larp.recordMicrophone): becomes THIS device's voice
+     *  (this.myVoice, saved here), replacing its previous one. Emits "my_voice". */
     async voiceUpload(wavBlob, name) {
-      const r = await fetch(`${this.httpBase}/api/voice?name=${encodeURIComponent(name || "My voice")}`,
+      const q = `name=${encodeURIComponent(name || "My voice")}${this.myVoice ? "&replace=" + encodeURIComponent(this.myVoice.id) : ""}`;
+      const r = await fetch(`${this.httpBase}/api/voice?${q}`,
         { method: "POST", body: wavBlob, headers: this._headers({ "Content-Type": "audio/wav" }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `voice setup failed (${r.status})`);
+      this._setMyVoice({ id: body.voice_id, name: body.name });
       return body;
     }
-    /** URL of a short WAV in the current voice, for an <audio> element. */
-    voiceTestUrl() {
-      return `${this.httpBase}/api/voice/test?t=${Date.now()}${this.token ? "&token=" + encodeURIComponent(this.token) : ""}`;
+    /** "Forget My Voice": this device goes back to the standard voice; its clone is deleted. */
+    async forgetVoice() {
+      const v = this.myVoice;
+      this._setMyVoice(null);
+      if (v) await fetch(`${this.httpBase}/api/voice/${encodeURIComponent(v.id)}`, { method: "DELETE", headers: this._headers() }).catch(() => {});
+    }
+    _setMyVoice(v) {
+      this.myVoice = v;
+      try { v ? localStorage.setItem(VOICE_KEY, JSON.stringify(v)) : localStorage.removeItem(VOICE_KEY); } catch { /* private mode */ }
+      this.emit("my_voice", v);
+    }
+    /** URL of a short WAV in a voice (a voice id; default the badge's), for an <audio> element. */
+    voiceTestUrl(voiceId) {
+      return `${this.httpBase}/api/voice/test?t=${Date.now()}${voiceId ? "&voice=" + encodeURIComponent(voiceId) : ""}`
+        + (this.token ? "&token=" + encodeURIComponent(this.token) : "");
     }
   }
 

@@ -85,7 +85,7 @@
       this.emit("status", {
         t: "status", listening: this.s.listening, target: this.s.target, contexts,
         context_name: this.s.notes.name, context: this.s.notes.text, packs: this.s.packs,
-        languages: ["Korean", "Spanish", "French", "Mandarin Chinese", "Japanese", "German", "English"],
+        languages: ["Korean", "Tamil", "Spanish", "French", "Mandarin Chinese", "Japanese", "German"],
         voice: { ...this.s.voice }, voice_recording: this.s.recording,
         badge: !!this.s.activeBadge, badges: this._badges(), badge_config: this._badgeConfig(),
         badge_url: "ws://172.20.10.2:8000/ws/badge?token=demo2345",
@@ -183,6 +183,7 @@
       setTimeout(() => { this.s.voice = { ready: true, name: this.recName, voice_id: "mockvoice123" }; this._status(); }, 1500);
     }
     voiceCancel() { clearInterval(this.recTimer); this.s.recording = null; this._status(); }
+    async forgetVoice() { this.myVoice = null; this.emit("my_voice", null); }
     async voiceUpload(wavBlob, name) {
       await new Promise(r => setTimeout(r, 1500));
       this.s.voice = { ready: true, name: name || "My voice", voice_id: "mockvoice123" };

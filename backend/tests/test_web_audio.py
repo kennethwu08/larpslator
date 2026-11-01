@@ -68,7 +68,7 @@ def test_listen_audio_stop_gives_transcript_translation_and_audio(app_main, monk
     monkeypatch.setattr(app_main, "transcribe", lambda pcm, prompt="": (heard.append(len(pcm)) or "She won the first set.", "english"))
     monkeypatch.setattr(app_main, "translate", lambda text, target, terms, ctx, style="": ("그녀가 첫 세트를 이겼다.", False))
     tts = np.zeros(1600, dtype=np.int16).tobytes()  # 0.1 s of "speech"
-    monkeypatch.setattr(app_main, "synthesize", lambda text, tone: (tts, False))
+    monkeypatch.setattr(app_main, "synthesize", lambda text, tone, voice_id="": (tts, False))
 
     with TestClient(app_main.app) as client:
         with client.websocket_connect("/ws/dashboard" + TOKEN) as dash, \
@@ -106,7 +106,7 @@ def test_bad_utterance_does_not_stop_the_pipeline(app_main, monkeypatch):
     monkeypatch.setattr(app_main, "translate", lambda *a, **k: ("안녕하세요.", False))
     calls = []
 
-    def flaky_tts(text, tone):
+    def flaky_tts(text, tone, voice_id=""):
         calls.append(1)
         if len(calls) == 1:
             raise RuntimeError("quota_exceeded")

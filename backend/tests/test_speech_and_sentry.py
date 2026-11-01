@@ -71,7 +71,7 @@ def test_pipeline_keyterms_are_the_checked_fields_english_jargon(app_main, monke
     monkeypatch.setattr(app_main, "eleven_client", fake_eleven(scribe))
     create, _ = fake_featherless("그녀는 긴 듀스 끝에 첫 세트를 따냈다.")
     monkeypatch.setattr(app_main.llm_client.chat.completions, "create", create)
-    monkeypatch.setattr(app_main, "synthesize", lambda text, tone: (b"\0\0", False))
+    monkeypatch.setattr(app_main, "synthesize", lambda text, tone, voice_id="": (b"\0\0", False))
     app_main.run_pipeline(b"\0" * 32000, "Korean", "", 0.0, {"tennis"}, client="web")
     terms = scribe.calls[0]["keyterms"]
     assert "deuce" in terms and "set" in terms

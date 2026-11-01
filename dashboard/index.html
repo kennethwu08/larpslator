@@ -71,10 +71,10 @@
 
     <h2 class="group-title">Translation</h2>
     <div class="group">
-      <label class="row" for="lang"><span>Language</span><select id="lang" disabled></select></label>
+      <label class="row" for="lang"><span>Translate English Into</span><select id="lang" disabled></select></label>
       <div id="styles"></div>
     </div>
-    <p class="footnote">LARP mode drops filler words and phrases what you say like an expert would.</p>
+    <p class="footnote">Anyone speaking another language (Tamil, Korean, …) is translated into English. LARP mode drops filler words and phrases what you say like an expert would.</p>
 
     <h2 class="group-title">Contexts</h2>
     <div class="group" id="contexts"><div class="row secondary">Loading…</div></div>
@@ -82,7 +82,7 @@
 
     <h2 class="group-title">Voice</h2>
     <div class="group">
-      <button class="row link" id="voice-open" disabled><span>Your Voice</span><span class="value" id="voice-value">Stock voice</span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
+      <button class="row link" id="voice-open" disabled><span>Your Voice</span><span class="value" id="voice-value">Standard voice</span><svg class="icon chevron"><use href="#i-chevron"/></svg></button>
       <button class="row link" id="voice-test" disabled><span>Play Sample</span><svg class="icon value"><use href="#i-play"/></svg></button>
     </div>
 
@@ -169,7 +169,7 @@
 <!-- Sheets -->
 <dialog id="voice-sheet" class="sheet" aria-labelledby="voice-title">
   <div class="sheet-head"><h2 id="voice-title">Your Voice</h2><button class="close" id="voice-close" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button></div>
-  <p class="secondary">Translations are spoken in a clone of your voice. Read the text below at your normal pace in a quiet room: about a minute, at least 20 seconds.</p>
+  <p class="secondary">Translations of what's said on this device are spoken in a clone of your voice; other devices keep the standard voice. Read the text below at your normal pace in a quiet room: about a minute, at least 20 seconds.</p>
   <div class="group">
     <label class="row" for="voice-name"><span>Name</span><input id="voice-name" class="inline-input" placeholder="Your name" autocomplete="given-name"></label>
   </div>
@@ -183,6 +183,7 @@
     <button id="rec-cancel" class="button" disabled>Cancel</button>
   </div>
   <p id="rec-progress" class="secondary small" role="status">Only record your own voice, or one you have permission to use.</p>
+  <div class="sheet-actions"><button id="voice-forget" class="button" hidden>Forget My Voice (someone else is using this device)</button></div>
 </dialog>
 
 <dialog id="notes-sheet" class="sheet" aria-labelledby="notes-title">
