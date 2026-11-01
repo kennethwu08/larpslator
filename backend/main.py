@@ -309,8 +309,9 @@ def translate(text: str, target: str, terms: list[dict], context_lines: list[str
 def warm_up_llm():
     """Featherless loads a model on first use (several seconds); do that at startup, not on the first sentence."""
     t = time.perf_counter()
-    try:
-        translate("Hello.", DEFAULT_TARGET, [], [])
+    try:  # straight to the API: a cached translation wouldn't wake the model
+        llm_client.chat.completions.create(model=LLM_MODEL, max_tokens=5,
+                                           messages=[{"role": "user", "content": "Say OK."}])
         log.info("LLM %s warmed up in %.1f s", LLM_MODEL, time.perf_counter() - t)
     except Exception as e:
         log.warning("LLM warm-up failed (translations will retry): %s", e)
