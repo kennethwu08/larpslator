@@ -9,7 +9,7 @@ from test_web_audio import TOKEN, voice_like
 
 
 def test_badge_sentence_is_translated_and_played_back_to_the_badge(app_main, monkeypatch):
-    monkeypatch.delenv("WEB_AUDIO_FALLBACK", raising=False)  # badge works with the fallback off
+    monkeypatch.setenv("WEB_AUDIO_FALLBACK", "0")  # badge works with browser audio off
     monkeypatch.setattr(app_main, "transcribe", lambda pcm, prompt="": ("Can you merge my branch?", "english"))
     monkeypatch.setattr(app_main, "translate", lambda *a, **k: ("제 브랜치를 병합해 줄 수 있나요?", False))
     tts = (np.arange(1600) % 100).astype(np.int16).tobytes()

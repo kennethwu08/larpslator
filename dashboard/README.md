@@ -24,6 +24,8 @@ because it keeps WebSockets open and its state in memory, which Vercel functions
 - Which backend: `?server=<tunnel host>` on the URL (remembered on that device), or set the `LARPSLATOR_SERVER`
   env var in the Vercel project (e.g. a named tunnel's fixed address) and redeploy.
 - Pairing is the same as any other device: `?token=<code>` or the code sheet.
+- If it can't reach the backend for 6 s, a sheet asks for the server address (or opens the demo with sample data).
+- No badge needed: Start Listening uses the browser's mic and speaker.
 
 ## Design
 
@@ -49,7 +51,7 @@ js/app.js           UI: shows events, wires up buttons (edit freely)
 js/api.js           backend client: the ONLY code that knows the protocol  ⚠ don't change without the backend
 js/mock.js          fake backend with the same API, for ?mock                ⚠ keep in sync with api.js
 js/monitoring.js    Sentry for the dashboard (DSN from the backend's /api/config)
-js/web-audio.js     web audio fallback: browser mic/speaker on /ws/web (only when WEB_AUDIO_FALLBACK=1)
+js/web-audio.js     web audio: browser mic/speaker on /ws/web, used by Start Listening when no badge is connected
 js/pcm-worklet.js   mic -> 16 kHz 16-bit PCM encoder (AudioWorklet + ScriptProcessor fallback)
 vendor/sentry.min.js @sentry/browser 8.55.0, kept locally
 vendor/chart.umd.js Chart.js 4.4.1, kept locally so it works on bad Wi-Fi

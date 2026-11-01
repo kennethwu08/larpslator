@@ -1,6 +1,6 @@
-"""Browser audio fallback: the dashboard acts as the translator's mic and speaker if the badge hardware fails.
+"""Browser audio: the dashboard acts as the translator's mic and speaker, so it works without the badge hardware.
 
-On with WEB_AUDIO_FALLBACK=1 (default off). This module is the only place the flag is checked: when it's off,
+On by default; WEB_AUDIO_FALLBACK=0 turns it off. This module is the only place the flag is checked: when it's off,
 GET /api/web-audio returns 404 (the dashboard then hides its Web Audio section) and /ws/web refuses connections.
 
 The browser is just another audio client on the same pipeline as the badge: it sends 16 kHz 16-bit mono PCM as
@@ -17,7 +17,7 @@ CHUNK_MS = 100  # what the dashboard sends per frame (the badge sends ~32 ms; an
 
 
 def enabled() -> bool:
-    return os.getenv("WEB_AUDIO_FALLBACK") == "1"
+    return os.getenv("WEB_AUDIO_FALLBACK", "1").strip() != "0"
 
 
 def router(handle_web_client, sample_rate: int, resume_after_s: float) -> APIRouter:
@@ -27,7 +27,7 @@ def router(handle_web_client, sample_rate: int, resume_after_s: float) -> APIRou
     @r.get("/api/web-audio")
     async def web_audio_info():
         if not enabled():
-            raise HTTPException(404, "web audio fallback is off (set WEB_AUDIO_FALLBACK=1)")
+            raise HTTPException(404, "web audio is off (WEB_AUDIO_FALLBACK=0)")
         return {"enabled": True, "websocket": "/ws/web", "sample_rate": sample_rate, "format": "pcm_s16le_mono",
                 "chunk_ms": CHUNK_MS, "resume_after_ms": round(resume_after_s * 1000)}
 

@@ -25,18 +25,35 @@
   // ---------------------------------------------------------------- connection + status
   $("pill-mock").hidden = !larp.mock;
   window.LarpMonitor?.init(larp);
-  window.LarpWebAudio?.init(larp);  // WEB_AUDIO fallback (hidden unless the backend has it on)
-  larp.on("open", () => { setConn("Connected", "on"); if ($("code-sheet").open) $("code-sheet").close(); });
+  window.LarpWebAudio?.init(larp);  // WEB_AUDIO: this browser's mic and speaker (on unless the backend turned it off)
+  window.LarpWebAudio?.onChange(() => { if (status) { showListen(); showBadges(status.badges || []); showSetup(status); } });
+  larp.on("open", () => {
+    setConn("Connected", "on");
+    clearTimeout(unreachableTimer);
+    for (const id of ["code-sheet", "server-sheet"]) if ($(id).open) $(id).close();
+  });
+  // Not connected after a few seconds (backend not running, or the page is on Vercel with an old/missing address):
+  // offer to enter the server address, or the demo with sample data.
+  const unreachableTimer = larp.mock ? 0 : setTimeout(() => {
+    if (larp.connected || document.querySelector("dialog[open]")) return;
+    setConn("Can't reach the server", "bad");
+    $("server-input").value = larp.address === location.host ? "" : larp.address;
+    $("server-sheet").showModal();
+  }, 6000);
+  const submitServer = () => {
+    const v = $("server-input").value.trim();
+    if (!v) { $("server-error").textContent = "Enter the address, e.g. xxxx.trycloudflare.com"; return; }
+    Larp.setServer(v);
+  };
+  $("server-submit").onclick = submitServer;
+  $("server-input").onkeydown = e => { if (e.key === "Enter") submitServer(); };
   larp.on("close", () => { setConn("Reconnecting…", "bad"); enable(false); });
 
   larp.on("status", m => {
     const first = !status;
     status = m;
     enable(true);
-    $("listen").classList.toggle("on", !!m.listening);
-    $("listen").setAttribute("aria-pressed", String(!!m.listening));
-    $("listen").innerHTML = m.listening ? icon("stop") + "<span>Stop</span>" : icon("mic") + "<span>Start Listening</span>";
-    $("feed-state").textContent = m.voice_recording != null ? "Recording voice" : m.listening ? "Listening" : "Paused";
+    showListen();
 
     const langs = m.languages || [];
     if ([...$("lang").options].map(o => o.value).join() !== langs.join()) {
@@ -51,7 +68,21 @@
     showSetup(m);
   });
 
-  $("listen").onclick = () => { if (status) larp.setListening(!status.listening); };
+  // No badge connected: Start Listening uses this browser's mic and speaker (web-audio.js) instead.
+  const useBrowser = () => !(status?.badges || []).some(b => b.active) && !!window.LarpWebAudio?.available();
+  function showListen() {
+    const on = useBrowser() ? window.LarpWebAudio.listening() : !!status.listening;
+    $("listen").classList.toggle("on", on);
+    $("listen").setAttribute("aria-pressed", String(on));
+    $("listen").innerHTML = on ? icon("stop") + "<span>Stop</span>" : icon("mic") + "<span>Start Listening</span>";
+    $("feed-state").textContent = status.voice_recording != null ? "Recording voice"
+      : on ? (useBrowser() ? "Listening (this browser)" : "Listening") : "Paused";
+  }
+  $("listen").onclick = () => {
+    if (!status) return;
+    if (useBrowser()) window.LarpWebAudio.toggle();
+    else larp.setListening(!status.listening);
+  };
   $("lang").onchange = e => larp.setLanguage(e.target.value);
 
   // ---------------------------------------------------------------- contexts (switches)
@@ -73,7 +104,7 @@
 
   // ---------------------------------------------------------------- badge (AirPods-style page)
   const wifi = rssi => rssi == null ? "—" : rssi > -60 ? "Excellent" : rssi > -72 ? "Good" : "Weak";
-  larp.on("badges", m => { if (status) { status.badges = m.badges; showBadges(m.badges || []); showSetup(status); } });
+  larp.on("badges", m => { if (status) { status.badges = m.badges; showBadges(m.badges || []); showSetup(status); showListen(); } });
 
   function showBadges(badges) {
     const active = badges.find(b => b.active);
@@ -83,12 +114,13 @@
     // Header: device art with the battery ring
     const device = document.querySelector(".device");
     device.classList.toggle("connected", !!active);
-    $("device-name").textContent = active ? name(active) : badges.length ? "Choose a Badge" : "No Badge";
+    const browser = !active && !badges.length && useBrowser();
+    $("device-name").textContent = active ? name(active) : badges.length ? "Choose a Badge" : browser ? "This Browser" : "No Badge";
     const bits = [];
     if (active) {
       bits.push(active.battery != null ? `${active.battery}%` : "Connected");
       if (active.battery != null) bits.push("Connected");
-    } else bits.push(badges.length ? `${badges.length} available` : "Not connected");
+    } else bits.push(badges.length ? `${badges.length} available` : browser ? "Using its mic and speaker" : "Not connected");
     $("device-sub").textContent = bits.join(" · ");
     const pct = active?.battery ?? 0;
     $("ring-fill").setAttribute("stroke-dasharray", `${active ? pct : 0} 100`);
@@ -382,15 +414,17 @@
   // ---------------------------------------------------------------- setup checklist
   function showSetup(m) {
     const badges = m.badges || [], badge = badges.find(b => b.active), voice = m.voice?.ready;
-    $("setup").hidden = !!(badge && voice);
-    $("step-badge").className = "step" + (badge ? " done" : "");
+    const browser = !badge && useBrowser();  // no badge needed: this browser's mic and speaker work
+    $("setup").hidden = !!((badge || browser) && voice);
+    $("step-badge").className = "step" + (badge || browser ? " done" : "");
     $("step-voice").className = "step" + (voice ? " done" : "");
-    $("setup-badge-value").textContent = badge ? badge.name || badge.id : badges.length ? `${badges.length} available` : "None found";
+    $("setup-badge-value").textContent = badge ? badge.name || badge.id : badges.length ? `${badges.length} available`
+      : browser ? "Using this browser" : "None found";
     $("setup-voice-value").textContent = voice ? m.voice.name || "Done" : "";
   }
   $("setup-badge").onclick = () => {
     const badges = status?.badges || [];
-    if (badges.find(b => b.active)) return;
+    if (badges.find(b => b.active) || (!badges.length && useBrowser())) return;
     if (badges.length === 1) { larp.connectBadge(badges[0].id); toast("Connecting…"); return; }
     showView("settings");
     ($("available-wrap").hidden ? $("badge-help") : $("available-wrap")).scrollIntoView({ behavior: "smooth", block: "center" });

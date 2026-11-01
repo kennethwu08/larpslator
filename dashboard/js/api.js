@@ -191,5 +191,12 @@
       return new LarpClient(serverAddress());
     },
     recordMicrophone,
+    /** Use another backend from now on (saved on this device) and reload. */
+    setServer(address) {
+      try { localStorage.setItem(SERVER_KEY, bareHost(address)); } catch { /* private mode */ }
+      const url = new URL(location.href);
+      url.searchParams.set("server", bareHost(address));
+      location.href = url.toString();
+    },
   };
 })();

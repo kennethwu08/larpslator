@@ -1,5 +1,6 @@
-/* Web audio fallback: this browser is the translator's mic and speaker when the badge hardware fails.
- * (WEB_AUDIO: on with WEB_AUDIO_FALLBACK=1 on the backend; see backend/web_audio.py and docs/messages.md.)
+/* Web audio: this browser is the translator's mic and speaker, so the dashboard works without the badge.
+ * (WEB_AUDIO: on unless the backend has WEB_AUDIO_FALLBACK=0; see backend/web_audio.py and docs/messages.md.)
+ * With no badge connected, the header's Start Listening uses this too (app.js, via available/toggle/onChange).
  *
  * Self-contained so it can be removed in one go. It talks to /ws/web, a second audio client on the same
  * pipeline as the badge: mic audio goes up as 16 kHz 16-bit mono PCM binary frames (the badge's format), the
@@ -24,6 +25,7 @@
   let larp, info = null, ws = null, ctx = null, gain = null;
   let stream = null, node = null, source = null;
   let listening = false, muted = false, resumeTimer = null, nextTime = 0;
+  const changeHandlers = [];
   const stats = { chunksSent: 0, bytesSent: 0, droppedWhileMuted: 0, chunksPlayed: 0, secondsPlayed: 0, level: 0 };
   window.__larpWebAudio = stats;  // read by tests and handy in the console
 
@@ -43,12 +45,8 @@
   async function init(client) {
     larp = client;
     if (larp.mock) return;  // nothing to stream to
-    try {
-      const r = await fetch(`${larp.httpBase}/api/web-audio`);
-      if (!r.ok) return;    // 404: the fallback is off, the section stays hidden
-      info = await r.json();
-    } catch { return; }
-    $("web-audio").hidden = false;
+    larp.on("open", probe);  // the backend may come up (or be restarted) after the page loaded
+    await probe();
     $("wa-listen").onclick = () => (listening ? stop() : start());
     $("wa-volume").oninput = e => {
       e.target.style.setProperty("--pct", e.target.value + "%");
@@ -61,6 +59,17 @@
       if (m.client !== "web") return;
       showError(`That sentence couldn't be translated (${m.msg}). Listening continues.`);
     });
+  }
+
+  async function probe() {
+    if (info) return;
+    try {
+      const r = await fetch(`${larp.httpBase}/api/web-audio`);
+      if (!r.ok) return;    // 404: web audio is off, the section stays hidden
+      info = await r.json();
+    } catch { return; }
+    $("web-audio").hidden = false;
+    changeHandlers.forEach(fn => fn());
   }
 
   // ---------------------------------------------------------------- the socket
@@ -208,6 +217,7 @@
     $("wa-listen").classList.toggle("on", listening);
     $("wa-listen").setAttribute("aria-pressed", String(listening));
     $("wa-listen-label").textContent = listening ? "Stop" : "Listen";
+    changeHandlers.forEach(fn => fn());
   }
 
   // ---------------------------------------------------------------- playback
@@ -256,5 +266,11 @@
     el.innerHTML = `<div class="secondary small">${esc(said)}</div><div class="wa-heard">${esc(heard)}</div>`;
   }
 
-  window.LarpWebAudio = { init };
+  window.LarpWebAudio = {
+    init,
+    available: () => !!info,
+    listening: () => listening,
+    toggle: () => { if (!$("wa-listen").disabled) listening ? stop() : start(); },  // disabled while starting
+    onChange: fn => changeHandlers.push(fn),
+  };
 })();

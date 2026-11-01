@@ -47,13 +47,13 @@ Several badges can be online; only the one **connected** on the dashboard is use
   The server never starts a new clip until the previous one has finished plus 300 ms.
   The badge should mute its mic while playing; the server also ignores mic audio during that window.
 
-## Web audio fallback (browser as mic + speaker)  (`ws://<laptop-ip>:8000/ws/web`)
-For when the badge hardware fails: the dashboard's **Web Audio** section uses the browser's mic and speaker instead.
+## Web audio (browser as mic + speaker, no badge needed)  (`ws://<laptop-ip>:8000/ws/web`)
+So the website works without the badge: the dashboard's **Web Audio** section (and, with no badge connected, the header's
+Start Listening) uses the browser's mic and speaker instead.
 Same pipeline and same audio format as the badge (voice detection → speech to text with ElevenLabs Scribe →
 local ML → Featherless translation → ElevenLabs voice); the browser is just a second audio client.
 
-**On/off:** environment variable `WEB_AUDIO_FALLBACK=1` in `.env`;
-anything else, or unset, is off. Restart the backend after changing it. Off: `GET /api/web-audio` returns 404 (the
+**On/off:** on by default; `WEB_AUDIO_FALLBACK=0` in `.env` turns it off. Restart the backend after changing it. Off: `GET /api/web-audio` returns 404 (the
 dashboard hides the section) and `/ws/web` refuses the connection. The flag is checked only in `backend/web_audio.py`.
 
 - `GET /api/web-audio` (on) → `{"enabled": true, "websocket": "/ws/web", "sample_rate": 16000, "format": "pcm_s16le_mono", "chunk_ms": 100, "resume_after_ms": 300}`

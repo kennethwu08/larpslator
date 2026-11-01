@@ -21,7 +21,7 @@ def voice_like(seconds: float) -> bytes:
 
 # ------------------------------------------------------------------ feature flag
 def test_flag_off_hides_the_fallback(app_main, monkeypatch):
-    monkeypatch.delenv("WEB_AUDIO_FALLBACK", raising=False)
+    monkeypatch.setenv("WEB_AUDIO_FALLBACK", "0")
     with TestClient(app_main.app) as client:
         assert client.get("/api/web-audio").status_code == 404
         with pytest.raises(WebSocketDisconnect):
@@ -42,10 +42,12 @@ def test_flag_on_serves_the_endpoints(app_main, monkeypatch):
             assert hello["t"] == "hello" and hello["client"] == "web" and hello["resume_after_ms"] == 300
 
 
-def test_flag_must_be_exactly_1(app_main, monkeypatch):
-    monkeypatch.setenv("WEB_AUDIO_FALLBACK", "true")
+def test_on_by_default_so_the_website_works_without_the_badge(app_main, monkeypatch):
+    monkeypatch.delenv("WEB_AUDIO_FALLBACK", raising=False)
     with TestClient(app_main.app) as client:
-        assert client.get("/api/web-audio").status_code == 404
+        assert client.get("/api/web-audio").status_code == 200
+        with client.websocket_connect("/ws/dashboard" + TOKEN) as dash:
+            assert dash.receive_json()["web_audio"]["enabled"] is True
 
 
 def test_web_socket_needs_the_pairing_code(app_main, monkeypatch):

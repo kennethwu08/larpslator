@@ -59,23 +59,24 @@ python test_pipeline.py sample.wav --contexts math,larp      # only math checked
 
 It prints every stage's output and timing (field, tone, terms found, which context lines went to the LLM) and saves each translation as `out_<n>.wav`.
 
-## Web audio fallback (if the badge fails)
+## Website only (no badge): web audio
 
 The dashboard can be the translator itself: its **Web Audio** section uses the browser's mic and speaker, on the same
 pipeline as the badge (same 16 kHz audio, voice detection, speech to text with ElevenLabs Scribe, local ML, Featherless
-translation, ElevenLabs voice). Off by default.
+translation, ElevenLabs voice). On by default, so the website works without any hardware: with no badge connected,
+the header's **Start Listening** uses this browser's mic and speaker too.
 
-- **Turn on:** `WEB_AUDIO_FALLBACK=1` in `.env`, restart. **Off:** remove it or set `0`.
+- **Turn off:** `WEB_AUDIO_FALLBACK=0` in `.env`, restart.
 - **Remove for good:** delete `web_audio.py`, `dashboard/js/web-audio.js`, `dashboard/js/pcm-worklet.js`, and the lines marked `WEB_AUDIO` in `main.py` and `dashboard/index.html`.
 - The mic needs `localhost` or https (`https://<laptop-ip>:8443` with `serve.py`, or the cloudflared address).
 
 **Test it:**
 ```bash
 cd backend
-WEB_AUDIO_FALLBACK=1 python serve.py
+python serve.py
 ```
-1. Open http://localhost:8000. A **Web Audio** section is above the conversation (without the flag it isn't there).
-2. Press **Listen** and allow the microphone. The level meter moves when you talk.
+1. Open http://localhost:8000. A **Web Audio** section is above the conversation (with `WEB_AUDIO_FALLBACK=0` it isn't there).
+2. Press **Start Listening** (header) or **Listen** (section) and allow the microphone. The level meter moves when you talk.
 3. Say a sentence and pause. The transcript, then the translation, appear in the section and in the conversation (labeled **Web** when a badge is also connected), and the translation plays through the speakers. The mic ignores the speakers until 300 ms after playback.
 4. Press **Stop**: the sentence you were in the middle of is still translated.
 5. Errors to try: block the mic in the site settings ("Microphone access was denied…"); stop the backend while listening (three reconnect tries, then "Lost the connection to the backend…").
