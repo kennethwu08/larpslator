@@ -1,8 +1,8 @@
 # Backend
 
-Badge mic audio → voice activity detection → Whisper → **local ML** → Gemini → ElevenLabs → back to the badge, with a live dashboard.
+Badge mic audio → voice activity detection → Whisper → **local ML** → Featherless LLM → ElevenLabs → back to the badge, with a live dashboard.
 
-**Gemini only translates.** Everything else (detecting the field, tone, finding jargon, choosing each jargon word's translation, learning from 👍/👎, trimming the context pack, the LARP phrase upgrades) runs locally for free in `ml.py`. Gemini gets one short plain-text request per sentence:
+**The LLM only translates.** Everything else (detecting the field, tone, finding jargon, choosing each jargon word's translation, learning from 👍/👎, trimming the context pack, the LARP phrase upgrades) runs locally for free in `ml.py`. The LLM (on Featherless) gets one short plain-text request per sentence:
 
 ```
 Translate into Korean. Reply with the translation only.
@@ -12,7 +12,7 @@ Text: Can you merge my branch before the kernel build?
 ```
 
 ```
-main.py               server + pipeline (VAD, Whisper, Gemini, ElevenLabs, playback)
+main.py               server + pipeline (VAD, Whisper, LLM, ElevenLabs, playback)
 ml.py                 local ML: field, tone, jargon, learning from feedback
 seeds.json            built-in fallback data, used per context until data/ has a file for it
 static/dashboard.html dashboard (served at /)
@@ -31,7 +31,7 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-The first start downloads the `all-MiniLM-L6-v2` model (~90 MB), so do it before you're on venue Wi-Fi. Startup takes a few seconds while the ML loads.
+The first start downloads the `all-MiniLM-L6-v2` model (~90 MB, into `backend/.models/`), so do it before you're on venue Wi-Fi. After that the ML starts without internet. It runs on ONNX (`fastembed`), not PyTorch: ~3 ms per sentence and ~250 MB of RAM for the whole server.
 
 - Dashboard: http://localhost:8000
 - Badge connects to `ws://<laptop-ip>:8000/ws/badge` (find the IP with `ipconfig getifaddr en0` on macOS). The laptop and badge must be on the same network (the phone hotspot).
@@ -46,14 +46,14 @@ python test_pipeline.py sample.wav --lang Korean --context "Prof. Lee; kernel = 
 python test_pipeline.py sample.wav --contexts math,larp      # only math checked, LARP on
 ```
 
-It prints every stage's output and timing (field, tone, terms found, which context lines went to Gemini) and saves each translation as `out_<n>.wav`.
+It prints every stage's output and timing (field, tone, terms found, which context lines went to the LLM) and saves each translation as `out_<n>.wav`.
 
 ## Contexts (the dashboard checkboxes)
 
 Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fields) and **LARP mode** (a style).
 
 - **Fields:** the backend only chooses between the checked fields (plus "general" for everyday talk). With one checked it always uses that field; with none checked it uses no jargon. Each field has its own glossary, so the same word is translated per field: "set" → 세트 in tennis, 집합 in math.
-- **LARP mode** makes you sound more impressive while translating. Locally (free), it drops fillers ("um", "like,", "kind of") and upgrades weak phrases ("I think" → "I'm confident that", "pretty good" → "excellent"). Then one extra line in the same Gemini request asks it to make the speaker sound like a seasoned expert in the detected field. No extra API call. The voice switches to a more confident delivery.
+- **LARP mode** makes you sound more impressive while translating. Locally (free), it drops fillers ("um", "like,", "kind of") and upgrades weak phrases ("I think" → "I'm confident that", "pretty good" → "excellent"). Then one extra line in the same LLM request asks it to make the speaker sound like a seasoned expert in the detected field. No extra API call. The voice switches to a more confident delivery.
 - **Data:** each context's content is read from `data/` (`glossaries/<context>.json`, `train.jsonl`, `larp.json`; formats in [../docs/messages.md](../docs/messages.md#data-files-read-from-data-at-startup-restart-the-backend-after-changing-them)). Until a file exists, `seeds.json` is used, and the dashboard shows `built-in` next to that checkbox. Restart the backend after changing `data/`.
 - **Adding a context** later means adding it to `FIELDS` (or `STYLES`) in `ml.py` and putting its data in `data/`.
 
@@ -67,7 +67,7 @@ Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fiel
    - **Jargon:** glossary lookup for the detected field. Each term's translation is picked by Beta posterior mean over 👍/👎 counts, with the glossary's first option as the default.
    - **Context:** short packs are sent whole; long ones are cut down to the 5 lines most relevant to this sentence.
    - **LARP** (if checked): filler removal and phrase upgrades, shown on the dashboard as crossed-out original → upgraded text.
-4. **Gemini** (`gemini-2.5-flash-lite`, thinking off, temperature 0) translates. It's skipped when the speaker already uses the target language (unless LARP is on, which still polishes).
+4. **Featherless** (`Qwen/Qwen2.5-7B-Instruct` by default, temperature 0) translates. Featherless uses the OpenAI API format, so it goes through the `openai` SDK with a different base URL. Open models sometimes add a label, quotes or a note; those are stripped. It's skipped when the speaker already uses the target language (unless LARP is on, which still polishes).
 5. **ElevenLabs** (`eleven_flash_v2_5`, `pcm_16000`) speaks it. The tone sets `stability` and `style` (`TONE_SETTINGS` in `main.py`). Tone tags like `[excited]` are only added for `eleven_v3` models; other models would read them out loud.
 6. **Playback.** Audio goes to the badge in 100 ms frames at about real time. New audio waits until the previous clip has finished plus 300 ms, and mic audio during that window is ignored.
 
@@ -85,8 +85,21 @@ Five contexts are built in: **Pickleball, Tennis, Computer science, Math** (fiel
 
 Every sentence logs its timing:
 ```
-utt 3 | vad 0.4ms | whisper 610ms | ml 11ms | gemini 380ms | elevenlabs 350ms | total 1351ms | cs/neutral | 'The kernel...' -> '커널이...' | terms {'kernel': '커널'}
+utt 3 | vad 0.4ms | whisper 610ms | ml 11ms | llm 380ms | elevenlabs 350ms | total 1351ms | cs/neutral | 'The kernel...' -> '커널이...' | terms {'kernel': '커널'}
 ```
+
+## Host it on Render (optional)
+
+`render.yaml` in the repo root is a Render Blueprint: in Render, **New → Blueprint**, pick this repo, paste the keys it asks for. The dashboard is then at `https://<service>.onrender.com` and the badge connects to `wss://<service>.onrender.com/ws/badge`.
+
+- **Free tier sleeps after 15 minutes idle,** and waking takes about a minute. Open `/health` a few minutes before the demo (and keep the dashboard tab open, so its WebSocket keeps it awake).
+- **Disk is wiped on every restart/deploy:** saved context packs, learned term choices and caches start over. Put context packs you need into the repo's `backend/contexts/`.
+- **The badge needs TLS for `wss://`** (port 443): the firmware must use `beginSSL` instead of `begin`. Keep the laptop server as the backup.
+- The whole server uses ~250 MB of RAM, so it fits the free 512 MB instance.
+
+## Sentry (optional)
+
+Set `SENTRY_DSN` and every crash, plus every skipped sentence (API errors), shows up in Sentry with its traceback, so you don't have to watch the terminal during the demo. Leave it empty to turn Sentry off.
 
 ## Messages and data formats
 
@@ -98,5 +111,7 @@ See [../docs/messages.md](../docs/messages.md) for every WebSocket message (with
 |---|---|
 | `ELEVENLABS_VOICE_ID` | a premade voice; set this to your cloned voice |
 | `ELEVENLABS_MODEL` | `eleven_flash_v2_5` |
-| `GEMINI_MODEL` | `gemini-2.5-flash-lite` (use `gemini-2.5-flash` if translations are weak) |
+| `FEATHERLESS_MODEL` | `Qwen/Qwen2.5-7B-Instruct` (any chat model on featherless.ai; Qwen is strong at Korean/Chinese/Japanese) |
+| `SENTRY_DSN` | empty = Sentry off |
+| `SENTRY_ENVIRONMENT` | `local` (`render` on Render) |
 | `TARGET_LANGUAGE` | `Korean` |

@@ -91,7 +91,7 @@ def main_cli():
         stage("", f"context sent: {r['context_lines'] or '-'}")
         if r["larp"]:
             stage("larp (local)", f"{r['larp']['text']!r}  changes: {r['larp']['changes'] or '-'}")
-        stage("gemini", f"{ms(tm['gemini'])}  {r['translation']!r}")
+        stage("llm", f"{ms(tm['llm'])}  {r['translation']!r}")
         out = f"out_{n}.wav"
         Path(out).write_bytes(main.pcm_to_wav(r["audio"]))
         stage("elevenlabs", f"{ms(tm['elevenlabs'])}  {len(r['audio']) / 2 / main.SAMPLE_RATE:.1f}s audio -> {out}")

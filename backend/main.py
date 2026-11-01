@@ -1,6 +1,6 @@
-"""Larpslator backend: badge audio -> VAD -> Whisper -> local ML -> Gemini -> ElevenLabs -> badge.
+"""Larpslator backend: badge audio -> VAD -> Whisper -> local ML -> Featherless LLM -> ElevenLabs -> badge.
 
-Gemini only translates (and, in LARP mode, polishes in the same call). Field detection,
+The LLM only translates (and, in LARP mode, polishes in the same call). Field detection,
 tone, jargon choice, context trimming, LARP phrase upgrades and learning from feedback
 all run locally (ml.py), so they cost nothing.
 
@@ -24,8 +24,6 @@ from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from google import genai
-from google.genai import types
 from openai import OpenAI
 
 HERE = Path(__file__).parent
@@ -35,6 +33,19 @@ load_dotenv(HERE / ".env")  # a backend/.env also works (doesn't override the ro
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("larpslator")
+
+# Sentry (optional): crashes and skipped sentences show up in the Sentry dashboard during the demo.
+if os.getenv("SENTRY_DSN"):
+    import sentry_sdk
+    sentry_sdk.init(dsn=os.getenv("SENTRY_DSN"), environment=os.getenv("SENTRY_ENVIRONMENT") or "local",
+                    traces_sample_rate=0.0)
+    log.info("Sentry error tracking on")
+
+
+def report(e: Exception):
+    """Send a handled error (a skipped sentence) to Sentry, if it's set up."""
+    if os.getenv("SENTRY_DSN"):
+        sentry_sdk.capture_exception(e)
 
 # ---------------------------------------------------------------- config
 SAMPLE_RATE = 16000
@@ -47,7 +58,7 @@ MAX_SENTENCE_MS = 15000                            # force a cut on very long sp
 RESUME_AFTER_PLAYBACK_S = 0.3                      # badge unmutes this long after playback ends
 SEND_CHUNK_BYTES = 3200                            # 100 ms of audio per WebSocket frame
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite"
+LLM_MODEL = os.getenv("FEATHERLESS_MODEL") or "Qwen/Qwen2.5-7B-Instruct"   # any chat model on featherless.ai
 TTS_MODEL = os.getenv("ELEVENLABS_MODEL") or "eleven_flash_v2_5"
 VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID") or "JBFqnCBsd6RMkjVDRZzb"  # premade voice as a fallback
 DEFAULT_TARGET = os.getenv("TARGET_LANGUAGE") or "Korean"
@@ -69,12 +80,13 @@ CACHE_DIR = HERE / "cache"
 for d in (CONTEXT_DIR, LOG_DIR, CACHE_DIR / "tts"):
     d.mkdir(parents=True, exist_ok=True)
 
-missing = [k for k in ("OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY") if not os.getenv(k)]
+missing = [k for k in ("OPENAI_API_KEY", "FEATHERLESS_API_KEY", "ELEVENLABS_API_KEY") if not os.getenv(k)]
 if missing:
     raise SystemExit(f"Missing in .env: {', '.join(missing)} (see .env.example in the repo root)")
 
 openai_client = OpenAI()  # reads OPENAI_API_KEY
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# Featherless speaks the OpenAI API, so the same SDK works with a different base URL.
+llm_client = OpenAI(api_key=os.getenv("FEATHERLESS_API_KEY"), base_url="https://api.featherless.ai/v1", timeout=20)
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
 from ml import FIELDS, STYLES, LocalML  # noqa: E402  (slow import: loads torch)
@@ -175,10 +187,12 @@ except (OSError, json.JSONDecodeError):
 
 def translate(text: str, target: str, terms: list[dict], context_lines: list[str],
               style: str = "") -> tuple[str, bool]:
-    """The only Gemini call: a short plain-text translation request. Returns (translation, cached).
+    """The only LLM call: a short plain-text translation request. Returns (translation, cached).
 
     `style` is the LARP instruction; it rides along in the same request, no extra call."""
-    lines = [f"Translate into {target}. Reply with the translation only."]
+    system = (f"You are a translation engine. Output only the {target} translation: "
+              "no quotes, notes, romanization or explanations.")
+    lines = [f"Translate into {target}."]
     if style:
         lines.append(style)
     if terms:
@@ -188,20 +202,31 @@ def translate(text: str, target: str, terms: list[dict], context_lines: list[str
     lines.append(f"Text: {text}")
     prompt = "\n".join(lines)
 
-    key = hashlib.sha1(f"{GEMINI_MODEL}\n{prompt}".encode()).hexdigest()
+    key = hashlib.sha1(f"{LLM_MODEL}\n{system}\n{prompt}".encode()).hexdigest()
     if key in _translation_cache:
         return _translation_cache[key], True
 
-    config = types.GenerateContentConfig(temperature=0, max_output_tokens=400)
-    if "2.5" in GEMINI_MODEL:
-        config.thinking_config = types.ThinkingConfig(thinking_budget=0)  # thinking adds latency and cost
-    r = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=config)
-    out = (r.text or "").strip()
+    r = llm_client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+        temperature=0,
+        max_tokens=400,
+    )
+    out = clean_llm_output(r.choices[0].message.content or "")
     if not out:
-        raise RuntimeError("Gemini returned an empty translation")
+        raise RuntimeError("LLM returned an empty translation")
     _translation_cache[key] = out
     _translation_cache_file.write_text(json.dumps(_translation_cache, ensure_ascii=False))
     return out, False
+
+
+def clean_llm_output(text: str) -> str:
+    """Open models sometimes add a label, quotes or a note after the translation; keep just the translation."""
+    text = text.strip().split("\n\n")[0].strip()
+    text = re.sub(r"^(translation|번역|traducción)\s*[:：]\s*", "", text, flags=re.IGNORECASE)
+    if len(text) >= 2 and text[0] in "\"'“「" and text[-1] in "\"'”」":
+        text = text[1:-1].strip()
+    return text
 
 
 def synthesize(text: str, tone: str) -> tuple[bytes, bool]:
@@ -226,16 +251,16 @@ def synthesize(text: str, tone: str) -> tuple[bytes, bool]:
 
 
 def translate_and_speak(r: dict, timing: dict):
-    """Gemini + ElevenLabs for an analyzed sentence. Fills r["translation"] and r["audio"]."""
+    """LLM + ElevenLabs for an analyzed sentence. Fills r["translation"] and r["audio"]."""
     t = time.perf_counter()
     larp = r.get("larp")
     if not larp and same_language(r["lang"], r["target"]):
-        r["translation"], cached = r["source"], True   # nothing to translate: no Gemini call
+        r["translation"], cached = r["source"], True   # nothing to translate: no LLM call
     else:
         text = larp["text"] if larp else r["source"]   # LARP: send the locally upgraded wording
         style = ML.larp_instruction(r["domain"]) if larp else ""
         r["translation"], cached = translate(text, r["target"], r["terms"], r["context_lines"], style)
-    timing["gemini"] = 0 if cached else round((time.perf_counter() - t) * 1000)
+    timing["llm"] = 0 if cached else round((time.perf_counter() - t) * 1000)
 
     t = time.perf_counter()
     r["audio"], cached = synthesize(r["translation"], r["tone"])
@@ -340,8 +365,8 @@ state = State()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(worker())
-    log.info("ready: target=%s, gemini=%s, tts=%s, context pack=%r",
-             state.target, GEMINI_MODEL, TTS_MODEL, state.context_name or None)
+    log.info("ready: target=%s, llm=%s, tts=%s, context pack=%r",
+             state.target, LLM_MODEL, TTS_MODEL, state.context_name or None)
     yield
     task.cancel()
 
@@ -380,9 +405,9 @@ def public(utt: dict) -> dict:
 
 def log_timing(uid: int, r: dict):
     tm = r["timing_ms"]
-    log.info("utt %d | vad %.1fms | whisper %sms | ml %sms | gemini %sms | elevenlabs %sms | total %sms | "
+    log.info("utt %d | vad %.1fms | whisper %sms | ml %sms | llm %sms | elevenlabs %sms | total %sms | "
              "%s/%s | %r%s -> %r | terms %s",
-             uid, tm.get("vad", 0), tm.get("whisper", "-"), tm.get("ml", "-"), tm["gemini"], tm["elevenlabs"],
+             uid, tm.get("vad", 0), tm.get("whisper", "-"), tm.get("ml", "-"), tm["llm"], tm["elevenlabs"],
              tm["total"], r["domain"], r["tone"], r["source"],
              f" =larp=> {r['larp']['text']!r}" if r.get("larp") else "", r["translation"],
              {t["match"]: t["choice"] for t in r["terms"]} or "-")
@@ -417,7 +442,7 @@ async def retry_with_next_option(uid: int, blamed: dict):
         return
     utt["rejected"].setdefault(blamed["term"], []).append(blamed["choice"])
     terms = ML.find_terms(utt["source"], utt["domain"], utt["target"], utt["rejected"])
-    terms = [t for t in terms if t["choice"]]  # a term with no options left falls back to Gemini's choice
+    terms = [t for t in terms if t["choice"]]  # a term with no options left falls back to the LLM's choice
     if [t["choice"] for t in terms] == [t["choice"] for t in utt["terms"]]:
         await broadcast({"t": "error", "id": uid, "msg": f"no other translations left for '{blamed['term']}'"})
         return
@@ -442,6 +467,7 @@ async def worker():
                 await retry_with_next_option(job[1], job[2])
         except Exception as e:
             log.error("%s skipped: %s: %s", job[0], type(e).__name__, e)
+            report(e)
             await broadcast({"t": "error", "id": job[1] if job[0] == "retry" else None,
                              "msg": f"{type(e).__name__}: {e}"})
 
@@ -529,6 +555,12 @@ async def receive_loop(ws: WebSocket, on_bytes=None):
 
 
 # ---------------------------------------------------------------- routes
+@app.get("/health")
+async def health():
+    """For Render's health check (and a quick "is it up?")."""
+    return {"ok": True, "badge": state.badge is not None}
+
+
 @app.get("/")
 async def dashboard():
     return FileResponse(HERE / "static" / "dashboard.html")

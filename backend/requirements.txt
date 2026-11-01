@@ -3,13 +3,13 @@ fastapi
 uvicorn[standard]
 python-dotenv
 openai
-google-genai
 elevenlabs
 webrtcvad-wheels   # prebuilt webrtcvad (the original package doesn't build on new Pythons)
 numpy
+sentry-sdk[fastapi]   # optional error tracking (on when SENTRY_DSN is set)
 
 # machine learning (Role C)
-sentence-transformers
+fastembed   # MiniLM sentence embeddings via ONNX (no PyTorch)
 scikit-learn
 wordfreq
 joblib

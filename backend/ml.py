@@ -1,11 +1,11 @@
 """Local, free ML: everything except the actual translation runs on the laptop.
 
-- field:   sentence embedding (all-MiniLM-L6-v2) -> LogisticRegression, limited to the checked
+- field:   sentence embedding (all-MiniLM-L6-v2, ONNX) -> LogisticRegression, limited to the checked
            contexts and smoothed over the conversation
 - tone:    punctuation rules, then nearest tone prototype by embedding
 - terms:   glossary lookup for the detected field
 - choice:  which translation to use per term, learned from thumbs up/down (Beta posterior per option)
-- context: only the context-pack lines relevant to this sentence go to Gemini
+- context: only the context-pack lines relevant to this sentence go to the LLM
 - larp:    drops filler words and upgrades weak phrases before translation
 """
 import json
@@ -15,13 +15,14 @@ import threading
 from pathlib import Path
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from sklearn.linear_model import LogisticRegression
 
 HERE = Path(__file__).parent
 DATA = HERE.parent / "data"            # owned by Role D; read-only here
 STATE_FILE = HERE / "state" / "term_stats.json"
-EMBED_MODEL = "all-MiniLM-L6-v2"
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+MODEL_DIR = HERE / ".models"           # downloaded once, then works offline
 
 # The contexts shown as checkboxes. Fields are subjects with jargon; LARP is a speaking style.
 FIELDS = {"pickleball": "Pickleball", "tennis": "Tennis", "cs": "Computer science", "math": "Math"}
@@ -60,8 +61,8 @@ class LocalML:
         self.larp = self._load_larp(seeds)
 
         log.info("loading %s (first run downloads ~90 MB)", EMBED_MODEL)
-        # CPU on purpose: the Apple GPU (MPS) backend crashes on macOS 14, and MiniLM takes ~15 ms on CPU anyway.
-        self.model = SentenceTransformer(EMBED_MODEL, device="cpu")
+        # ONNX instead of PyTorch: same model, ~3 ms per sentence, and small enough for Render's 512 MB tier.
+        self.model = TextEmbedding(EMBED_MODEL, cache_dir=str(MODEL_DIR))
 
         # Field classifier over all fields; unchecked ones are masked out at prediction time.
         # Glossary terms count as short training examples too.
@@ -122,7 +123,8 @@ class LocalML:
 
     # ------------------------------------------------------------ analysis
     def embed(self, texts: list[str]) -> np.ndarray:
-        return self.model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+        e = np.array(list(self.model.embed(texts)))
+        return e / np.linalg.norm(e, axis=1, keepdims=True)
 
     def _masked(self, probs: np.ndarray, active: set[str]) -> dict[str, float]:
         """Field probabilities limited to the checked fields (+ general), renormalized."""
@@ -166,7 +168,7 @@ class LocalML:
         }
 
     def enhance(self, text: str) -> dict:
-        """LARP, local part: drop filler words, upgrade weak phrases. Gemini polishes the rest."""
+        """LARP, local part: drop filler words, upgrade weak phrases. the LLM polishes the rest."""
         out, changes = text, []
         for rx in self.larp["_fillers"]:
             for m in rx.finditer(out):
