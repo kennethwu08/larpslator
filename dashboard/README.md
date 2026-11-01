@@ -10,8 +10,20 @@ The app people see during the demo: what the badge heard, the translation, which
 | Fake data, idle | `index.html?mock` (press Listen yourself) | nothing |
 | Real backend | `http://localhost:8000` (the backend serves this folder) | backend running, see [../backend/README.md](../backend/README.md) |
 | Real backend from another device | `https://<laptop-ip>:8443/?token=<code>` (Session → Pair Another Device) | same Wi-Fi/hotspot |
+| Hosted on Vercel | `https://<project>.vercel.app/?server=<tunnel host>&token=<code>` | backend behind the cloudflared tunnel (see below) |
 
 The **MOCK DATA** pill in the header tells you which one you're looking at. The backend's own minimal test page is at `http://localhost:8000/reference`.
+
+## Vercel
+
+Vercel hosts only this folder (static, no build beyond writing `js/config.js`); the backend stays on the laptop,
+because it keeps WebSockets open and its state in memory, which Vercel functions can't do. Settings come from
+`vercel.json` in the repo root, so import the repo with the root directory left as is.
+
+- The page is https, so the backend must be too: use the cloudflared tunnel address, not `ws://<laptop-ip>`.
+- Which backend: `?server=<tunnel host>` on the URL (remembered on that device), or set the `LARPSLATOR_SERVER`
+  env var in the Vercel project (e.g. a named tunnel's fixed address) and redeploy.
+- Pairing is the same as any other device: `?token=<code>` or the code sheet.
 
 ## Design
 

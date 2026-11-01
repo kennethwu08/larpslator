@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "node -e \"require('fs').writeFileSync('dashboard/js/config.js', 'window.LARPSLATOR_SERVER = ' + JSON.stringify(process.env.LARPSLATOR_SERVER || '') + ';\\n')\"",
+  "outputDirectory": "dashboard",
+  "cleanUrls": true
+}
