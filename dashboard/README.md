@@ -41,6 +41,7 @@ larp.on("transcript", m => ...);    // { id, source, lang }: what was heard, bef
 larp.on("utterance", u => ...);     // full result: translation, domain, domain_probs, terms[], larp, timing_ms
 larp.on("feedback", m => ...);      // { id, val, term }
 larp.on("metrics", m => ...);       // { n, accuracy, curve[], window }: learning curve
+larp.on("badges", m => ...);        // every 5 s: badges online (battery, Wi-Fi, latency, in sync)
 larp.on("voice_progress", m => ...);
 larp.on("error", m => ...);         // { id, msg }: a sentence was skipped; listening continues
 
@@ -54,6 +55,9 @@ larp.resetLearning()
 larp.voiceRecordOnBadge(name) / larp.voiceStop() / larp.voiceCancel()
 await larp.voiceUpload(wavBlob, name)           // with Larp.recordMicrophone()
 larp.voiceTestUrl()                             // <audio> src in the user's voice (null in mock)
+larp.connectBadge(id) / larp.disconnectBadge()  // which badge is used (ids from status.badges)
+larp.identifyBadge(id)                          // blink it
+larp.setBadgeVolume(id, 0-100)
 ```
 
 The exact fields of every event, with examples, are in [../docs/messages.md](../docs/messages.md).

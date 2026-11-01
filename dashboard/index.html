@@ -3,119 +3,112 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Larpslator</title>
+<meta name="theme-color" content="#f5f4f0">
+<meta name="description" content="Larpslator translates the conversation, understands the context, and sounds like you.">
+<title>Larpslator — Every word, in context.</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-
-<header class="bar">
-  <h1>Larpslator</h1>
-  <button id="listen" class="listen off" disabled>Listen</button>
-  <label class="lang">Translate to <select id="lang"></select></label>
-  <div class="pills">
-    <span id="pill-mock" class="pill warn" hidden>MOCK DATA</span>
-    <span id="pill-server" class="pill">server: connecting…</span>
-    <span id="pill-badge" class="pill">badge: offline</span>
-    <span id="pill-voice" class="pill">voice: …</span>
-  </div>
+<a class="skip-link" href="#conversation">Skip to conversation</a>
+<header class="topbar">
+  <a href="#conversation" class="brand" aria-label="Larpslator home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>larpslator<span class="brand-dot">.</span></a>
+  <div class="product-tag">A little context changes everything.</div>
+  <div class="top-status"><span id="pill-mock" class="pill warn" hidden>Demo · simulated data</span><span id="pill-server" class="pill">Connecting…</span><span id="pill-badge" class="pill">Badge offline</span></div>
+  <button id="present" class="icon-button" title="Toggle presentation view" aria-label="Toggle presentation view" aria-pressed="false">↗</button>
 </header>
-
-<main class="grid">
-  <!-- Left: setup -->
-  <div class="col">
-    <section class="card" id="badge-card">
-      <h2>Badge</h2>
-      <div id="badge-list"></div>
-      <div id="badge-detail" hidden>
-        <dl id="badge-info" class="info"></dl>
-        <label class="volume">Volume <input id="badge-volume" type="range" min="0" max="100" step="5"></label>
-        <div class="row">
-          <button id="badge-identify" title="Blink the badge's LED so you can find it">Identify</button>
-          <button id="badge-disconnect">Disconnect</button>
-        </div>
-      </div>
-      <details id="badge-help">
-        <summary>How to connect a badge</summary>
-        <ol class="small">
-          <li>Laptop and badge on the same Wi-Fi (the phone hotspot).</li>
-          <li>In the badge's <code>config.h</code>, set the server to:<br><code id="badge-url">…</code></li>
-          <li>Turn the badge on. It appears above; press <b>Connect</b>.</li>
-        </ol>
-      </details>
+<div class="workspace">
+  <aside class="sidebar" aria-label="Session settings">
+    <div class="session-label"><span class="tiny-dot"></span> SESSION STUDIO <span class="session-number">01</span></div>
+    <h2 class="sidebar-title">Make yourself<br>understood.</h2>
+    <p class="sidebar-intro">Your words. The right meaning.<br>Still unmistakably you.</p>
+    <section class="settings-section">
+      <div class="section-heading"><h3>01 / Language</h3><span class="subtle-icon">文 A</span></div>
+      <label class="input-label" for="lang">Translate into</label>
+      <select id="lang" disabled><option>Waiting for connection…</option></select>
+      <div class="language-flow"><span>Auto-detect input</span><span aria-hidden="true">→</span><span id="target-caption">Your language</span></div>
     </section>
-
-    <section class="card" id="voice-card">
-      <h2>Your voice</h2>
-      <p id="voice-state" class="muted"></p>
-      <details id="voice-setup">
-        <summary id="voice-summary">Set up your voice</summary>
-        <p class="muted">Read this out loud at your normal pace, somewhere quiet (about 60 s, at least 20 s of speech):</p>
-        <p class="script">Hi, I'm setting up my voice for Larpslator. I'll read this out loud at a normal pace, the way I usually talk.
-          On weekends I play pickleball and tennis with friends; we argue about the kitchen line, the score, and whose serve was out.
-          During the week I study computer science and math: algorithms, proofs, matrices, and the occasional bug that takes all night to find.
-          Honestly, the best part of any day is a good conversation, a quick laugh, and maybe a coffee afterwards.
-          Thanks for listening. This should be enough for the voice to sound like me.</p>
-        <input id="voice-name" placeholder="Your name">
-        <div class="row">
-          <button id="rec-badge">Record on badge</button>
-          <button id="rec-browser">Record in browser</button>
-        </div>
-        <div class="row">
-          <button id="rec-stop" disabled>Stop &amp; create voice</button>
-          <button id="rec-cancel" disabled>Cancel</button>
-        </div>
-        <p id="rec-progress" class="muted"></p>
-      </details>
-      <button id="voice-test">▶ Play test</button>
+    <section class="settings-section">
+      <div class="section-heading"><h3>02 / Your world</h3><span class="subtle-icon">⌘</span></div>
+      <p class="small muted">Choose what you're talking about.</p>
+      <div id="contexts"><p class="muted small">Loading your contexts…</p></div>
+    </section>
+    <section class="settings-section" id="voice-card">
+      <div class="section-heading"><h3>03 / Your voice</h3><span class="subtle-icon">≋</span></div>
+      <span id="pill-voice" class="pill">Checking voice…</span>
+      <p id="voice-state" class="small muted">Your voice, across languages.</p>
+      <div class="row"><button id="voice-open" class="secondary-button" disabled>Set up voice <span>↗</span></button><button id="voice-test" class="icon-button" title="Play a sample of the current voice" aria-label="Play voice sample" disabled>▷</button></div>
       <audio id="voice-audio"></audio>
     </section>
-
-    <section class="card">
-      <h2>Contexts</h2>
-      <div id="contexts"></div>
-      <p class="muted small">Checked fields are the only ones the backend can detect. One checked = always that field.</p>
+    <section class="settings-section" id="badge-card">
+      <div class="section-heading"><h3>04 / Your badge</h3><span class="subtle-icon">⌁</span></div>
+      <p id="badge-summary" class="small muted">No badge online yet.</p>
+      <div class="row"><button id="badge-open" class="secondary-button" disabled>Connect badge <span>↗</span></button><button id="badge-identify" class="icon-button" title="Blink the badge so you can find it" aria-label="Identify badge" disabled>◎</button></div>
     </section>
-
-    <section class="card">
-      <h2>Meeting notes</h2>
-      <select id="packs"></select>
-      <input id="notes-name" placeholder="Name (e.g. Tennis club meeting)">
-      <textarea id="notes" placeholder="One item per line: names, jargon, agenda…"></textarea>
-      <button id="notes-save">Save notes</button>
-      <p id="notes-status" class="muted small"></p>
+    <section class="settings-section notes-section">
+      <details id="notes-details"><summary>05 / Session notes <span>＋</span></summary>
+        <p class="small muted">Names, terminology, and a little extra context.</p>
+        <label class="sr-only" for="packs">Saved notes</label><select id="packs"><option value="">Load saved notes…</option></select>
+        <label class="sr-only" for="notes-name">Notes name</label><input id="notes-name" placeholder="e.g. Tuesday tennis club">
+        <label class="sr-only" for="notes">Session notes</label><textarea id="notes" placeholder="Names, agenda, or phrases to remember…"></textarea>
+        <button id="notes-save" class="secondary-button" disabled>Save context <span>↗</span></button>
+        <p id="notes-status" class="small muted" role="status">No notes active</p>
+      </details>
     </section>
+    <div class="sidebar-footer"><span class="badge-drawing" aria-hidden="true">⌁</span><div>Small badge.<br><strong>Bigger conversations.</strong></div><span class="footer-arrow">↗</span></div>
+  </aside>
+  <main id="conversation" class="main">
+    <div class="page-heading"><div><div class="eyebrow">THE CONVERSATION, CONNECTED</div><h1>Every word.<br><span>In context.</span></h1></div><div class="heading-note"><span class="spark">✳</span><p>For the jargon.<br>The nuance.<br>The way <em>you</em> say it.</p></div></div>
+    <section class="live-console" aria-label="Listening controls">
+      <div class="live-status"><div class="waveform" id="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><strong id="session-state">Getting connected</strong><p id="session-hint">Your conversation will appear here.</p></div></div>
+      <button id="listen" class="listen off" disabled><span class="listen-symbol">●</span><span id="listen-label">Start listening</span><span class="listen-key">↗</span></button>
+    </section>
+    <div class="dashboard-grid">
+      <section class="conversation-panel" aria-labelledby="conversation-heading">
+        <div class="panel-heading"><h2 id="conversation-heading">Live conversation <span id="utterance-count" class="count-badge">0</span></h2><span class="live-label"><i></i><span id="feed-label">Ready when you are</span></span></div>
+        <div id="errors" role="alert"></div>
+        <div id="utterances" aria-live="polite" aria-relevant="additions text">
+          <div class="empty"><div class="empty-symbol" aria-hidden="true">“</div><h3>Great conversations start<br>with a little understanding.</h3><p>Press Start listening. Speak naturally.<br>We'll take care of the context.</p><div class="empty-chips"><span>Speak</span><i>→</i><span>Understand</span><i>→</i><span>Connect</span></div></div>
+        </div>
+        <div class="feed-footer"><span>CONTEXT DOES THE HEAVY LIFTING.</span><span>YOU JUST TALK. ↗</span></div>
+      </section>
+      <aside class="insights" aria-label="Translation insights">
+        <section class="insight-card field-card"><div class="panel-heading"><h2>Reading the room</h2><span class="card-number">01</span></div><p class="small muted">The field behind your words.</p><div id="fields"><div class="waiting-state">Context appears after<br>your first sentence.<span>⌁</span></div></div></section>
+        <section class="insight-card terms-card"><div class="panel-heading"><h2>Words that matter</h2><span class="card-number">02</span></div><p class="small muted">A little jargon. A lot of meaning.</p><div id="terms"><p class="muted small">Special terms will appear here.</p></div><p class="insight-footnote">Wrong meaning? Select a term to try its next translation.</p></section>
+        <section class="insight-card learning-card"><div class="panel-heading"><h2>Better with you</h2><span class="card-number">03</span></div><div class="accuracy"><span id="accuracy">—</span><span>positive<br>jargon feedback</span></div><div class="chart"><canvas id="curve" role="img" aria-label="Rolling positive jargon feedback rate"></canvas></div><div class="learning-footer"><span id="accuracy-meta">Your feedback starts the curve.</span><button id="reset" class="text-button" disabled>Reset ↺</button></div></section>
+      </aside>
+    </div>
+    <footer class="main-footer"><span>BUILT FOR REAL CONVERSATIONS.</span><span>Larpslator · LarpHacks 2026</span></footer>
+  </main>
+</div>
+<dialog id="voice-dialog" aria-labelledby="voice-title">
+  <div class="dialog-heading"><span class="eyebrow">MAKE IT YOURS</span><button id="voice-close" class="icon-button" aria-label="Close voice setup">×</button></div>
+  <h2 id="voice-title">New language.<br><span>Same you.</span></h2>
+  <p class="muted">Read the passage below in your normal voice. Aim for 60 seconds in a quiet space; at least 20 seconds of speech is needed.</p>
+  <label class="input-label" for="voice-name">What should we call your voice?</label><input id="voice-name" placeholder="Your name" autocomplete="given-name">
+  <p class="script">Hi, I'm setting up my voice for Larpslator. I'll read this out loud at a normal pace, the way I usually talk. On weekends I play pickleball and tennis with friends; we argue about the kitchen line, the score, and whose serve was out. During the week I study computer science and math: algorithms, proofs, matrices, and the occasional bug that takes all night to find. Honestly, the best part of any day is a good conversation, a quick laugh, and maybe a coffee afterwards. Thanks for listening. This should be enough for the voice to sound like me.</p>
+  <div class="row"><button id="rec-browser" class="primary-button">Record in browser</button><button id="rec-badge" class="secondary-button">Record on badge</button></div>
+  <div class="row"><button id="rec-stop" class="primary-button" disabled>Stop &amp; create voice</button><button id="rec-cancel" class="secondary-button" disabled>Cancel recording</button></div>
+  <p id="rec-progress" class="small muted" role="status">Only record a voice you have permission to use.</p>
+</dialog>
+<dialog id="badge-dialog" aria-labelledby="badge-title">
+  <div class="dialog-heading"><span class="eyebrow">YOUR BADGE</span><button id="badge-close" class="icon-button" aria-label="Close badge settings">×</button></div>
+  <h2 id="badge-title">Small badge.<br><span>Always in sync.</span></h2>
+  <p class="muted">Pick the badge to use. It gets your language, contexts and voice automatically.</p>
+  <div id="badge-list" class="badge-list"></div>
+  <div id="badge-detail" hidden>
+    <dl id="badge-info" class="badge-info"></dl>
+    <label class="input-label" for="badge-volume">Speaker volume</label><input id="badge-volume" type="range" min="0" max="100" step="5">
+    <div class="row"><button id="badge-identify-dialog" class="secondary-button">Identify (blink)</button><button id="badge-disconnect" class="secondary-button">Disconnect</button></div>
   </div>
-
-  <!-- Center: the conversation -->
-  <section class="card conversation">
-    <h2>Live conversation</h2>
-    <div id="errors"></div>
-    <div id="utterances"><p class="muted empty">Press Listen and start talking.</p></div>
-  </section>
-
-  <!-- Right: what the backend is thinking -->
-  <div class="col">
-    <section class="card">
-      <h2>Detected field</h2>
-      <div id="fields"><p class="muted">Waiting for the first sentence…</p></div>
-    </section>
-
-    <section class="card">
-      <h2>Special words</h2>
-      <div id="terms"><p class="muted">Jargon in the latest sentence shows here.</p></div>
-      <p class="muted small">Click a word that's wrong to try its next translation.</p>
-    </section>
-
-    <section class="card">
-      <h2>Learning curve</h2>
-      <div class="accuracy"><span id="accuracy">–</span><span id="accuracy-meta" class="muted small">No feedback yet</span></div>
-      <div class="chart"><canvas id="curve"></canvas></div>
-      <button id="reset">Reset learning</button>
-    </section>
-  </div>
-</main>
-
-<!-- Order matters: api.js defines Larp, mock.js builds on it, app.js uses both. -->
+  <details id="badge-help" class="badge-help"><summary>How to connect a new badge <span>＋</span></summary>
+    <ol class="small muted">
+      <li>Put the laptop and the badge on the same Wi-Fi (the phone hotspot).</li>
+      <li>In the badge's <code>config.h</code>, set the server to <code id="badge-url">…</code></li>
+      <li>Turn the badge on. It appears above; choose <strong>Connect</strong>.</li>
+    </ol>
+  </details>
+</dialog>
+<div id="toast" class="toast" role="status" hidden></div>
 <script src="vendor/chart.umd.js"></script>
 <script src="js/api.js"></script>
 <script src="js/mock.js"></script>
