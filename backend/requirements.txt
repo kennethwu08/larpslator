@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+websockets
+python-dotenv
+openai
+elevenlabs
+sentence-transformers
+scikit-learn
+wordfreq
+joblib
