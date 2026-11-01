@@ -1,0 +1,22 @@
+{
+  "argument": "인자",
+  "parameter": "매개변수",
+  "function": "함수",
+  "method": "메서드",
+  "class": "클래스",
+  "attribute": "어트리뷰트",
+  "dictionary": "딕셔너리",
+  "key": "키",
+  "string": "문자열",
+  "list": "리스트",
+  "tuple": "튜플",
+  "iterable": "이터러블",
+  "iterator": "이터레이터",
+  "generator": "제너레이터",
+  "coroutine": "코루틴",
+  "module": "모듈",
+  "package": "패키지",
+  "expression": "표현식",
+  "statement": "문장",
+  "immutable": "불변"
+}

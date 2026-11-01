@@ -1,0 +1,65 @@
+{
+  "kitchen": [
+    "키친",
+    "논발리존"
+  ],
+  "non-volley zone": [
+    "논발리존"
+  ],
+  "baseline": [
+    "베이스라인"
+  ],
+  "service court": [
+    "서비스 코트"
+  ],
+  "volley": [
+    "발리"
+  ],
+  "groundstroke": [
+    "그라운드스트로크"
+  ],
+  "dink": [
+    "딩크"
+  ],
+  "third shot drop": [
+    "서드샷 드롭"
+  ],
+  "drive": [
+    "드라이브"
+  ],
+  "lob": [
+    "로브"
+  ],
+  "around the post": [
+    "어라운드 더 포스트"
+  ],
+  "drop serve": [
+    "드롭 서브"
+  ],
+  "two-bounce rule": [
+    "투바운스 룰",
+    "투바운드 룰"
+  ],
+  "side out": [
+    "사이드아웃"
+  ],
+  "server number": [
+    "서버 넘버"
+  ],
+  "fault": [
+    "폴트"
+  ],
+  "stacking": [
+    "스택",
+    "스태킹"
+  ],
+  "transition zone": [
+    "트랜지션 존"
+  ],
+  "paddle": [
+    "패들"
+  ],
+  "open play": [
+    "오픈 플레이"
+  ]
+}

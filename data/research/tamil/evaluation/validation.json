@@ -1,0 +1,12 @@
+{
+  "status": "data_valid",
+  "rows": 90,
+  "domains": {
+    "cs": 30,
+    "tennis": 30,
+    "pickleball": 30
+  },
+  "selected_rows": 6,
+  "planned_api_calls": 12,
+  "human_reference_review": "pending; draft references are not gold-standard"
+}

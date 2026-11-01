@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-01",
+  "scope": "bounded web discovery; not exhaustive",
+  "queries": [
+    {
+      "domain": "cs",
+      "query": "கணினி அறிவியல் ஆய்வுக் கட்டுரை தமிழ் இதழ் pdf"
+    },
+    {
+      "domain": "cs",
+      "query": "கணினித் தமிழ் ஆய்விதழ் செயற்கை நுண்ணறிவு"
+    },
+    {
+      "domain": "cs",
+      "query": "கணினி site.ejournal.um.edu.my/index.php/tamilperaivu/article/view"
+    },
+    {
+      "domain": "tennis",
+      "query": "டென்னிஸ் ஆய்வுக் கட்டுரை தமிழ்"
+    },
+    {
+      "domain": "tennis",
+      "query": "டென்னிஸ் ஆய்விதழ்"
+    },
+    {
+      "domain": "tennis",
+      "query": "tennis Tamil language journal Tamil full text"
+    },
+    {
+      "domain": "pickleball",
+      "query": "பிக்கிள்பால் ஆய்வுக் கட்டுரை தமிழ்"
+    },
+    {
+      "domain": "pickleball",
+      "query": "பிக்கிள்பால் ஆய்விதழ்"
+    },
+    {
+      "domain": "pickleball",
+      "query": "பிகில்பால் ஆய்வு"
+    },
+    {
+      "domain": "tennis",
+      "query": "tennis biomechanics serve review site.pmc.ncbi.nlm.nih.gov",
+      "fallback": "English approved"
+    },
+    {
+      "domain": "pickleball",
+      "query": "pickleball mental health systematic review 2023 doi",
+      "fallback": "English approved"
+    }
+  ],
+  "verified_tamil_sports_papers": 0,
+  "note": "Tamil news, apps, Tamil Nadu affiliations, table tennis and English papers about Tamil were not classified as Tamil-language academic sports papers."
+}
